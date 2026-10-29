@@ -7,6 +7,8 @@
     threshold: 0.85,
     sameAuthorOnly: true,
     rememberSeen: true,
+    showBlockButton: true,
+    blockWithoutConfirm: true,
   };
   const SEEN_STORAGE_KEY = 'seenPosts';
 
@@ -14,6 +16,8 @@
     enabled: document.getElementById('enabled'),
     sameAuthorOnly: document.getElementById('sameAuthorOnly'),
     rememberSeen: document.getElementById('rememberSeen'),
+    showBlockButton: document.getElementById('showBlockButton'),
+    blockWithoutConfirm: document.getElementById('blockWithoutConfirm'),
     mode: document.getElementById('mode'),
     threshold: document.getElementById('threshold'),
   };
@@ -28,6 +32,8 @@
     fields.enabled.checked = settings.enabled;
     fields.sameAuthorOnly.checked = settings.sameAuthorOnly;
     fields.rememberSeen.checked = settings.rememberSeen;
+    fields.showBlockButton.checked = settings.showBlockButton;
+    fields.blockWithoutConfirm.checked = settings.blockWithoutConfirm;
     fields.mode.value = settings.mode;
     fields.threshold.value = settings.threshold;
     thresholdValue.textContent = formatThreshold(settings.threshold);
@@ -46,6 +52,12 @@
     );
     fields.rememberSeen.addEventListener('change', () =>
       save({ rememberSeen: fields.rememberSeen.checked })
+    );
+    fields.showBlockButton.addEventListener('change', () =>
+      save({ showBlockButton: fields.showBlockButton.checked })
+    );
+    fields.blockWithoutConfirm.addEventListener('change', () =>
+      save({ blockWithoutConfirm: fields.blockWithoutConfirm.checked })
     );
     fields.mode.addEventListener('change', () => save({ mode: fields.mode.value }));
     fields.threshold.addEventListener('input', () => {
@@ -80,18 +92,30 @@
     navigator.clipboard.writeText(text).catch(() => {});
   }
 
+  function sendToTab(tabId, message) {
+    return new Promise((resolve) => {
+      chrome.tabs.sendMessage(tabId, message, (data) => {
+        resolve(chrome.runtime.lastError ? null : data || null);
+      });
+    });
+  }
+
   function runDiagnose() {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
       const tab = tabs && tabs[0];
       if (!tab || tab.id === undefined) return showReport('Không tìm thấy tab đang mở.');
-      chrome.tabs.sendMessage(tab.id, { type: 'diagnose' }, (data) => {
-        if (chrome.runtime.lastError || !data) {
-          return showReport(
-            'Content script chưa chạy trên tab này. Reload extension ở chrome://extensions rồi reload trang Facebook.'
-          );
-        }
-        showReport(JSON.stringify(data, null, 2));
-      });
+
+      const [posts, comments] = await Promise.all([
+        sendToTab(tab.id, { type: 'diagnose' }),
+        sendToTab(tab.id, { type: 'diagnoseComments' }),
+      ]);
+      if (!posts && !comments) {
+        return showReport(
+          'Content script chưa chạy trên tab này. Reload extension ở chrome://extensions rồi reload trang Facebook.'
+        );
+      }
+      // comments = null nghĩa là tab đang chạy bản cũ (chưa nạp comment-block.js).
+      showReport(JSON.stringify({ posts, comments }, null, 2));
     });
   }
 

@@ -12,6 +12,18 @@
   const FNV_OFFSET_BASIS = 0x811c9dc5;
   const FNV_PRIME = 0x01000193;
 
+  // aria-label của comment: "Bình luận dưới tên X…", "Phản hồi bình luận của X…",
+  // "Comment by X…", "Reply by X…". Bài viết không bắt đầu bằng các cụm này.
+  const COMMENT_LABEL_PATTERN = /^(bình luận|phản hồi|comment|reply)/i;
+
+  const FACEBOOK_HOST_PATTERN = /(^|\.)facebook\.com$/i;
+  const GROUP_USER_PATH = /^\/groups\/[^/]+\/user\/(\d+)\/?$/;
+  const PROFILE_ID_PATH = '/profile.php';
+
+  // Nút xác nhận trong hộp thoại chặn của Facebook (không khớp "Hủy"/"Cancel").
+  const CONFIRM_BUTTON_PATTERN = /^(chặn|block|xác nhận|confirm)$/i;
+  const DEFAULT_POLL_MS = 50;
+
   const DEFAULT_OPTIONS = Object.freeze({
     threshold: 0.85,
     sameAuthorOnly: true,
@@ -32,6 +44,75 @@
       .replace(/[^\p{L}\p{N}]+/gu, ' ')
       .replace(/\b(xem them|see more)\s*$/, '')
       .trim();
+  }
+
+  function isCommentLabel(label) {
+    return COMMENT_LABEL_PATTERN.test(String(label || '').trim());
+  }
+
+  // Facebook bỏ qua element.click() trên menu và hộp thoại; cần chuỗi sự kiện chuột
+  // đầy đủ như người dùng thật.
+  const CLICK_SEQUENCE = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'];
+
+  function realisticClick(node) {
+    const rect = node.getBoundingClientRect();
+    const init = {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      button: 0,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true,
+    };
+    CLICK_SEQUENCE.forEach((type) => {
+      const EventType = type.startsWith('pointer') ? PointerEvent : MouseEvent;
+      node.dispatchEvent(new EventType(type, init));
+    });
+  }
+
+  // So tên không phân biệt hoa thường, dấu và dạng Unicode (NFC/NFD).
+  function matchesName(text, name) {
+    if (!name) return true;
+    return normalizeText(text).includes(normalizeText(name));
+  }
+
+  // Thăm dò find() cho tới khi có kết quả hoặc hết thời gian; trả về null nếu hết giờ.
+  function waitFor(find, timeoutMs, pollMs = DEFAULT_POLL_MS) {
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+      const timer = setInterval(() => {
+        const found = find();
+        if (found || Date.now() - startedAt >= timeoutMs) {
+          clearInterval(timer);
+          resolve(found || null);
+        }
+      }, pollMs);
+    });
+  }
+
+  // Link tác giả comment -> URL trang cá nhân sạch (bỏ tham số theo dõi). Chỉ nhận
+  // host facebook.com; trả về '' nếu không dựng được.
+  function toProfileUrl(href, baseUrl) {
+    if (!href) return '';
+    let url;
+    try {
+      url = new URL(href, baseUrl);
+    } catch (_error) {
+      return '';
+    }
+    if (!FACEBOOK_HOST_PATTERN.test(url.hostname)) return '';
+
+    const groupUser = url.pathname.match(GROUP_USER_PATH);
+    if (groupUser) return `${url.origin}${PROFILE_ID_PATH}?id=${groupUser[1]}`;
+
+    if (url.pathname === PROFILE_ID_PATH) {
+      const id = url.searchParams.get('id');
+      return id ? `${url.origin}${PROFILE_ID_PATH}?id=${id}` : '';
+    }
+    return url.pathname === '/' ? '' : `${url.origin}${url.pathname}`;
   }
 
   // FNV-1a 32-bit. Chỉ cần ổn định và gọn để lưu; không dùng cho bảo mật.
@@ -269,6 +350,12 @@
     buildFingerprint,
     similarity,
     createRegistry,
+    isCommentLabel,
+    toProfileUrl,
+    waitFor,
+    realisticClick,
+    matchesName,
+    CONFIRM_BUTTON_PATTERN,
   };
 
   if (typeof module !== 'undefined' && module.exports) {

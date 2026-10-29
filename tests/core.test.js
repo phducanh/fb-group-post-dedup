@@ -2,7 +2,18 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeText, buildFingerprint, similarity, createRegistry } = require('../core.js');
+const {
+  normalizeText,
+  buildFingerprint,
+  similarity,
+  createRegistry,
+  isCommentLabel,
+  toProfileUrl,
+  matchesName,
+  realisticClick,
+  waitFor,
+  CONFIRM_BUTTON_PATTERN,
+} = require('../core.js');
 
 const SALE_TEXT =
   'Cần bán gấp căn hộ 2 phòng ngủ quận 7, giá 2 tỷ 5, liên hệ 0901 234 567 để xem nhà';
@@ -18,6 +29,53 @@ function post(overrides) {
     ...overrides,
   };
 }
+
+test('isCommentLabel recognises comment and reply articles in Vietnamese and English', () => {
+  assert.equal(isCommentLabel('Bình luận dưới tên Phạm Tiên vào 2 giờ trước'), true);
+  assert.equal(isCommentLabel('Phản hồi bình luận của Gia Bách dưới tên Thông Nguyễn'), true);
+  assert.equal(isCommentLabel('Comment by Jane Doe 2 hours ago'), true);
+  assert.equal(isCommentLabel('Reply by Jane Doe to John Roe\'s comment'), true);
+});
+
+test('isCommentLabel rejects post labels and empty values', () => {
+  assert.equal(isCommentLabel('Bài viết của Bui Thai Hao'), false);
+  assert.equal(isCommentLabel(''), false);
+  assert.equal(isCommentLabel(null), false);
+  assert.equal(isCommentLabel(undefined), false);
+});
+
+const FB = 'https://web.facebook.com/groups/1/posts/2/';
+
+test('toProfileUrl turns a group member link into a profile.php link', () => {
+  const href = '/groups/991161867582623/user/100002975923703/?__cft__[0]=abc&__tn__=R';
+  assert.equal(
+    toProfileUrl(href, FB),
+    'https://web.facebook.com/profile.php?id=100002975923703'
+  );
+});
+
+test('toProfileUrl keeps only the id of a profile.php link', () => {
+  assert.equal(
+    toProfileUrl('https://www.facebook.com/profile.php?id=55&__cft__=x', FB),
+    'https://www.facebook.com/profile.php?id=55'
+  );
+});
+
+test('toProfileUrl strips tracking params from a username link', () => {
+  assert.equal(
+    toProfileUrl('https://www.facebook.com/some.user?__cft__[0]=x', FB),
+    'https://www.facebook.com/some.user'
+  );
+});
+
+test('toProfileUrl rejects other hosts, the site root and invalid input', () => {
+  assert.equal(toProfileUrl('https://evil.example.com/groups/1/user/2/', FB), '');
+  assert.equal(toProfileUrl('https://notfacebook.com/someone', FB), '');
+  assert.equal(toProfileUrl('/', FB), '');
+  assert.equal(toProfileUrl('https://www.facebook.com/profile.php', FB), '');
+  assert.equal(toProfileUrl('http://[bad', FB), '');
+  assert.equal(toProfileUrl('', FB), '');
+});
 
 test('normalizeText strips accents, urls, punctuation and "Xem thêm"', () => {
   const result = normalizeText('Đẹp quá!!! https://x.com/abc  Xem thêm');
@@ -243,4 +301,64 @@ test('stats counts scanned and duplicate posts; reset clears them', () => {
 
   registry.reset();
   assert.deepEqual(registry.stats(), { scanned: 0, duplicates: 0 });
+});
+
+test('matchesName ignores accents, case and Unicode normalisation form', () => {
+  assert.equal(matchesName('Chặn Phạm Tiên', 'Phạm Tiên'), true);
+  assert.equal(matchesName('Chặn Phạm Tiên', 'pham tien'), true);
+  const decomposed = 'Pha\u0323m Tie\u0302n'; // NFD của "Phạm Tiên"
+  assert.equal(matchesName('Chặn Phạm Tiên', decomposed), true);
+  assert.equal(matchesName('Chặn Phạm Tiên', 'Gia Bách'), false);
+});
+
+test('matchesName accepts any text when the name is unknown', () => {
+  assert.equal(matchesName('Chặn ai đó', ''), true);
+  assert.equal(matchesName('Chặn ai đó', undefined), true);
+});
+
+test('CONFIRM_BUTTON_PATTERN matches confirm labels but not cancel labels', () => {
+  ['Chặn', 'Block', 'Xác nhận', 'Confirm'].forEach((label) =>
+    assert.equal(CONFIRM_BUTTON_PATTERN.test(label), true, label)
+  );
+  ['Hủy', 'Cancel', 'Chặn người này', 'Không'].forEach((label) =>
+    assert.equal(CONFIRM_BUTTON_PATTERN.test(label), false, label)
+  );
+});
+
+test('waitFor resolves with the first truthy result', async () => {
+  let calls = 0;
+  const result = await waitFor(() => (++calls >= 3 ? 'found' : null), 1000, 5);
+  assert.equal(result, 'found');
+});
+
+test('waitFor resolves null when nothing is found before the timeout', async () => {
+  assert.equal(await waitFor(() => null, 30, 5), null);
+});
+
+test('realisticClick dispatches the full pointer/mouse sequence at the element centre', () => {
+  const seen = [];
+  class FakeEvent {
+    constructor(type, init) {
+      this.type = type;
+      Object.assign(this, init);
+    }
+  }
+  global.MouseEvent = FakeEvent;
+  global.PointerEvent = FakeEvent;
+  const node = {
+    getBoundingClientRect: () => ({ left: 10, top: 20, width: 100, height: 40 }),
+    dispatchEvent: (event) => seen.push(event),
+  };
+
+  realisticClick(node);
+
+  assert.deepEqual(
+    seen.map((event) => event.type),
+    ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']
+  );
+  assert.equal(seen[0].clientX, 60);
+  assert.equal(seen[0].clientY, 40);
+  assert.equal(seen.every((event) => event.bubbles === true), true);
+  delete global.MouseEvent;
+  delete global.PointerEvent;
 });

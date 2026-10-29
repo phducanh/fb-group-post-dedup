@@ -87,6 +87,13 @@
           text is <strong>not</strong> stored. You can turn this off or delete it at any time
           from the extension popup (“Xóa dữ liệu đã nhớ”), or by removing the extension.
         </li>
+        <li>
+          <strong>Temporary tab bookkeeping</strong>, saved with <code>chrome.storage.session</code>
+          (kept in memory, cleared when the browser closes). Only when you use the “block” button
+          on a comment and Facebook’s comment menu has no block option, the extension remembers
+          the numeric id of the background tab it opened and of the tab you clicked in, so it can
+          report the result back. It contains no personal data and is deleted when that tab closes.
+        </li>
       </ol>
 
       <h2>Diagnostic report</h2>

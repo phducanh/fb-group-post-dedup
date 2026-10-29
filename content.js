@@ -4,7 +4,7 @@
   if (globalThis.__fbFeedDedupLoaded) return;
   globalThis.__fbFeedDedupLoaded = true;
 
-  const { DEFAULT_OPTIONS, createRegistry } = globalThis.DedupCore;
+  const { DEFAULT_OPTIONS, createRegistry, isCommentLabel } = globalThis.DedupCore;
 
   const MAX_EXTRACT_ATTEMPTS = 60;
   const DIAGNOSE_MAX_ARTICLES = 12;
@@ -165,8 +165,17 @@
 
   function topLevelArticles() {
     return [...document.querySelectorAll(ROOT_SELECTOR)].filter(
-      (root) => !root.parentElement.closest(ROOT_SELECTOR)
+      (root) => !root.parentElement.closest(ROOT_SELECTOR) && !isCommentRoot(root)
     );
+  }
+
+  // Trên trang bài viết riêng, comment là role="article" đứng ngang hàng chứ không
+  // lồng trong bài, và có thể nằm trong wrapper data-virtualized không có nhãn.
+  // Comment nhận ra bằng aria-label và không có nội dung bài đăng (story_message).
+  function isCommentRoot(root) {
+    const article = root.matches(ARTICLE_SELECTOR) ? root : root.querySelector(ARTICLE_SELECTOR);
+    if (!article || !isCommentLabel(article.getAttribute('aria-label'))) return false;
+    return !root.querySelector(MESSAGE_SELECTORS.join(','));
   }
 
   function isVirtualized(root) {

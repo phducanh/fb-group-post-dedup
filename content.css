@@ -38,3 +38,52 @@
     color: #e4e6eb;
   }
 }
+
+.dedup-block-btn {
+  margin-left: 8px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.dedup-block-btn:hover {
+  background: rgba(185, 28, 28, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  .dedup-block-btn {
+    color: #f87171;
+  }
+
+  .dedup-block-btn:hover {
+    background: rgba(248, 113, 113, 0.16);
+  }
+}
+
+.dedup-status {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483647;
+  max-width: 320px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #312e81;
+  color: #fff;
+  font: 13px/1.4 system-ui, sans-serif;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* Trong lúc extension tự bấm Chặn, ẩn menu và hộp xác nhận của Facebook (opacity thay vì
+   visibility để innerText vẫn đọc được). Hộp thoại bài viết có chứa comment nên được giữ nguyên. */
+.dedup-blocking [role="menu"],
+.dedup-blocking [role="dialog"]:not(:has([role="article"])) {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}

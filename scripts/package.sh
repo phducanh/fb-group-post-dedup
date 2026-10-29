@@ -13,6 +13,9 @@ FILES=(
   manifest.json
   core.js
   content.js
+  comment-block.js
+  profile-block.js
+  background.js
   content.css
   popup.html
   popup.css
