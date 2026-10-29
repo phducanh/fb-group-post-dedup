@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mock feed (ảnh quảng cáo, dữ liệu giả)</title>
+    <link rel="stylesheet" href="../content.css" />
+    <style>
+      :root {
+        --bg: #18191a;
+        --surface: #242526;
+        --text: #e4e6eb;
+        --muted: #b0b3b8;
+        --accent: #4f46e5;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        width: 1280px;
+        height: 800px;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.4 system-ui, sans-serif;
+      }
+      .caption {
+        padding: 22px 0 14px;
+        text-align: center;
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+      }
+      .caption span { color: #a5b4fc; }
+      .feed { width: 600px; margin: 0 auto; }
+      .post {
+        margin-bottom: 12px;
+        border-radius: 10px;
+        background: var(--surface);
+        overflow: hidden;
+      }
+      .post__head { padding: 12px 14px 6px; }
+      .post__group { font-weight: 700; }
+      .post__meta { color: var(--muted); font-size: 13px; }
+      .post__text { padding: 4px 14px 12px; }
+      .post__img { height: 150px; background: linear-gradient(120deg, #6366f1, #22d3ee); }
+      .post__img--b { background: linear-gradient(120deg, #f97316, #facc15); }
+      .dedup-banner { margin: 0 0 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="caption">Một người đăng 20 nhóm, <span>bạn chỉ đọc một lần</span></div>
+    <main class="feed">
+      <article class="post">
+        <div class="post__head">
+          <div class="post__group">Chợ Mô Hình Việt</div>
+          <div class="post__meta">Nguyễn Minh An · 4 phút trước</div>
+        </div>
+        <div class="post__text">Bán gấp bộ mô hình Mecha còn nguyên box, đủ phụ kiện. Giá 450k, ship toàn quốc.</div>
+        <div class="post__img"></div>
+      </article>
+
+      <div class="dedup-banner">
+        <span class="dedup-banner__text">Bài trùng nội dung của Nguyễn Minh An, đã xem trước đó ở nhóm "Chợ Mô Hình Việt"</span>
+        <button type="button" class="dedup-banner__toggle">Hiện bài</button>
+      </div>
+      <div class="dedup-banner">
+        <span class="dedup-banner__text">Bài trùng nội dung của Nguyễn Minh An, đã xem trước đó ở nhóm "Chợ Mô Hình Việt"</span>
+        <button type="button" class="dedup-banner__toggle">Hiện bài</button>
+      </div>
+      <div class="dedup-banner">
+        <span class="dedup-banner__text">Bài trùng nội dung của Nguyễn Minh An, đã xem trước đó ở nhóm "Chợ Mô Hình Việt"</span>
+        <button type="button" class="dedup-banner__toggle">Hiện bài</button>
+      </div>
+
+      <article class="post">
+        <div class="post__head">
+          <div class="post__group">Hội Sưu Tầm Đồ Chơi</div>
+          <div class="post__meta">Trần Gia Bảo · 6 phút trước</div>
+        </div>
+        <div class="post__text">Cần pass lại set figure mới mở hộp, ai quan tâm nhắn mình nhé.</div>
+        <div class="post__img post__img--b"></div>
+      </article>
+    </main>
+  </body>
+</html>

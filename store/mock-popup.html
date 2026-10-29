@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mock popup (ảnh quảng cáo)</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        width: 1280px;
+        height: 800px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 80px;
+        background: linear-gradient(135deg, #312e81, #4f46e5 60%, #6366f1);
+        color: #fff;
+        font: 16px/1.5 system-ui, sans-serif;
+      }
+      .copy { max-width: 460px; }
+      .copy h1 { margin: 0 0 16px; font-size: 44px; line-height: 1.1; letter-spacing: -1px; }
+      .copy ul { margin: 0; padding-left: 20px; font-size: 20px; }
+      .copy li { margin-bottom: 8px; }
+      img.shot {
+        height: 640px;
+        border-radius: 16px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+      }
+    </style>
+  </head>
+  <body>
+    <section class="copy">
+      <h1>Tùy chỉnh theo cách bạn đọc</h1>
+      <ul>
+        <li>Thu gọn hoặc ẩn hẳn bài trùng</li>
+        <li>Chỉnh độ giống tối thiểu</li>
+        <li>Chỉ lọc khi cùng người đăng</li>
+        <li>Nhớ bài đã thấy trong 24 giờ</li>
+      </ul>
+    </section>
+    <img class="shot" src="screenshots/_popup-raw.png" alt="Popup của extension" />
+  </body>
+</html>

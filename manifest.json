@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Group Post Dedup",
+  "short_name": "Post Dedup",
+  "version": "1.0.0",
+  "description": "Thu gọn hoặc ẩn các bài trùng nội dung của cùng một người đăng ở nhiều nhóm trên bảng tin, để bạn không đọc lại.",
+  "permissions": ["storage"],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Group Post Dedup",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    },
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.facebook.com/*"],
+      "js": ["core.js", "content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

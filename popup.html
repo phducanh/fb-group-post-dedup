@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Group Post Dedup</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Group Post Dedup</h1>
+      <p id="stats" class="stats" aria-live="polite">Đang tải…</p>
+
+      <label class="row">
+        <input type="checkbox" id="enabled" />
+        <span>Bật lọc bài trùng</span>
+      </label>
+
+      <label class="row">
+        <input type="checkbox" id="sameAuthorOnly" />
+        <span>Chỉ coi là trùng khi cùng người đăng</span>
+      </label>
+
+      <label class="row">
+        <input type="checkbox" id="rememberSeen" />
+        <span>Nhớ bài đã thấy giữa các lần mở trang (24 giờ)</span>
+      </label>
+
+      <label class="field">
+        <span>Cách xử lý bài trùng</span>
+        <select id="mode">
+          <option value="collapse">Thu gọn (có nút Hiện bài)</option>
+          <option value="hide">Ẩn hoàn toàn</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Độ giống tối thiểu: <output id="thresholdValue"></output></span>
+        <input type="range" id="threshold" min="0.6" max="1" step="0.05" />
+      </label>
+
+      <button type="button" id="clearSeen" class="secondary">Xóa dữ liệu đã nhớ</button>
+      <button type="button" id="diagnose" class="secondary">Chẩn đoán (copy báo cáo)</button>
+      <textarea id="report" readonly hidden rows="6" aria-label="Báo cáo chẩn đoán"></textarea>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

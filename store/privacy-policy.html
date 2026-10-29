@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Policy — Group Post Dedup</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --text: #1c1e21;
+        --muted: #65676b;
+        --accent: #4f46e5;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #18191a;
+          --text: #e4e6eb;
+          --muted: #b0b3b8;
+          --accent: #a5b4fc;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.6 system-ui, sans-serif;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 32px 16px 64px;
+      }
+      h1 { font-size: 28px; margin: 0 0 4px; }
+      h2 { font-size: 20px; margin: 32px 0 8px; }
+      .meta { color: var(--muted); margin: 0 0 24px; }
+      a { color: var(--accent); }
+      code { font-size: 0.9em; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Privacy Policy — Group Post Dedup</h1>
+      <p class="meta">Last updated: 2026-10-29</p>
+
+      <p>
+        Group Post Dedup (“the extension”) hides or collapses repeated posts that the same
+        person publishes to several groups on facebook.com. This policy explains what it
+        does with data.
+      </p>
+
+      <h2>Summary</h2>
+      <ul>
+        <li>The extension works <strong>entirely inside your browser</strong>.</li>
+        <li>
+          It <strong>does not send any data</strong> to the developer or to any third party.
+          It has no server, no analytics, no advertising and no remote code.
+        </li>
+        <li>
+          It is <strong>not affiliated with, endorsed by, or sponsored by Meta Platforms,
+          Inc.</strong>
+        </li>
+      </ul>
+
+      <h2>What the extension reads</h2>
+      <p>
+        While you browse facebook.com, the extension reads, from the page already loaded in
+        your browser, for each post in your feed: the post text, the author name and
+        identifier, the group name and identifier, and the post identifier. This is used only
+        to decide whether two posts are the same content. The data is processed in memory and
+        is not transmitted anywhere.
+      </p>
+
+      <h2>What the extension stores on your device</h2>
+      <ol>
+        <li>
+          <strong>Settings</strong> (on/off, collapse or hide, similarity threshold, “same
+          author only”, “remember seen posts”), saved with <code>chrome.storage.sync</code>.
+          If you are signed in to Chrome with sync enabled, Chrome itself may sync these
+          settings between your devices under your Google account; the developer has no
+          access to them.
+        </li>
+        <li>
+          <strong>Remembered posts</strong> (optional, on by default), saved with
+          <code>chrome.storage.local</code> for at most 24 hours and at most 500 entries. Each
+          entry contains a one-way hash of the normalised post text, the post and author/group
+          identifiers, the author and group display names, and a timestamp. The original post
+          text is <strong>not</strong> stored. You can turn this off or delete it at any time
+          from the extension popup (“Xóa dữ liệu đã nhớ”), or by removing the extension.
+        </li>
+      </ol>
+
+      <h2>Diagnostic report</h2>
+      <p>
+        The popup has a “Chẩn đoán” button. When you click it, the extension builds a short
+        report (page address, settings, element counts and, for the first 12 posts,
+        identifiers, names and the first 40 characters of the text) and copies it to your
+        clipboard so that you can paste it where you choose. Nothing is sent automatically.
+      </p>
+
+      <h2>Permissions</h2>
+      <ul>
+        <li>
+          <strong>Access to <code>*.facebook.com</code></strong>: required to read the feed
+          and to collapse duplicate posts. The extension does not run on any other site.
+        </li>
+        <li>
+          <strong><code>storage</code></strong>: required to save the settings and remembered
+          posts described above.
+        </li>
+      </ul>
+
+      <h2>Data sharing and sale</h2>
+      <p>
+        The extension does not sell, share, or transfer user data to anyone, does not use
+        data for purposes unrelated to its single purpose (hiding duplicate posts), and does
+        not use data to determine creditworthiness or for lending purposes.
+      </p>
+
+      <h2>Children</h2>
+      <p>The extension is not directed to children under 13.</p>
+
+      <h2>Changes</h2>
+      <p>
+        If this policy changes, the new version will be published at this address with an
+        updated date.
+      </p>
+
+      <h2>Contact</h2>
+      <p>Developer contact: <a href="mailto:YOUR_CONTACT_EMAIL">YOUR_CONTACT_EMAIL</a></p>
+    </main>
+  </body>
+</html>
