@@ -33,3 +33,4 @@ node --test tests/
 ## Lưu ý
 
 Facebook thường đổi DOM; nếu không nhận diện được tác giả/nội dung, chỉnh các selector ở đầu `content.js`.
+# fb-group-post-dedup
