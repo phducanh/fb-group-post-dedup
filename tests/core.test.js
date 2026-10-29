@@ -293,6 +293,97 @@ test('restored entries do not count as scanned posts', () => {
   assert.deepEqual(after.stats(), { scanned: 0, duplicates: 0 });
 });
 
+test('classify results carry the identity of the post and of its original', () => {
+  const registry = createRegistry();
+  const first = registry.classify(post({ postId: '1' }));
+  const second = registry.classify(post({ postId: '2', groupKey: 'g2' }));
+
+  assert.equal(first.identity, 'id:1');
+  assert.equal(second.identity, 'id:2');
+  assert.equal(second.original.identity, 'id:1');
+});
+
+test('a newer post supersedes the older original and the older one becomes the duplicate', () => {
+  const registry = createRegistry();
+  registry.classify(post({ postId: 'old', groupName: 'Nhóm cũ' }));
+
+  const asked = [];
+  const newer = registry.classify(
+    post({ postId: 'new', groupKey: 'g2', groupName: 'Nhóm mới' }),
+    {
+      isNewerThan: (originalIdentity) => {
+        asked.push(originalIdentity);
+        return true;
+      },
+    }
+  );
+
+  assert.equal(newer.status, 'new');
+  assert.equal(newer.supersedes.identity, 'id:old');
+  assert.deepEqual(asked, ['id:old']);
+  assert.equal(registry.classify(post({ postId: 'old' })).status, 'duplicate');
+  assert.equal(registry.classify(post({ postId: 'old' })).original.groupName, 'Nhóm mới');
+});
+
+test('a post that is not newer stays a duplicate of the existing original', () => {
+  const registry = createRegistry();
+  registry.classify(post({ postId: 'old' }));
+  const later = registry.classify(post({ postId: 'later', groupKey: 'g2' }), {
+    isNewerThan: () => false,
+  });
+
+  assert.equal(later.status, 'duplicate');
+  assert.equal(later.supersedes, undefined);
+});
+
+test('after a supersede, further copies are duplicates of the newest post', () => {
+  const registry = createRegistry();
+  registry.classify(post({ postId: 'old' }));
+  registry.classify(post({ postId: 'new', groupKey: 'g2', groupName: 'Nhóm mới' }), {
+    isNewerThan: () => true,
+  });
+  const third = registry.classify(post({ postId: 'third', groupKey: 'g3' }), {
+    isNewerThan: () => false,
+  });
+
+  assert.equal(third.status, 'duplicate');
+  assert.equal(third.original.identity, 'id:new');
+});
+
+test('a re-rendered superseding post is still shown, without superseding again', () => {
+  const registry = createRegistry();
+  registry.classify(post({ postId: 'old' }));
+  registry.classify(post({ postId: 'new', groupKey: 'g2' }), { isNewerThan: () => true });
+  const again = registry.classify(post({ postId: 'new', groupKey: 'g2' }), {
+    isNewerThan: () => true,
+  });
+
+  assert.equal(again.status, 'new');
+  assert.equal(again.supersedes, undefined);
+});
+
+test('snapshot keeps the newest original and drops the one it superseded', () => {
+  const registry = createRegistry();
+  registry.classify(post({ postId: 'old' }));
+  registry.classify(post({ postId: 'new', groupKey: 'g2' }), { isNewerThan: () => true });
+
+  assert.deepEqual(registry.snapshot().map((entry) => entry.postId), ['new']);
+});
+
+test('a restored original from a previous visit is superseded by the same post seen now', () => {
+  const before = createRegistry();
+  before.classify(post({ postId: 'yesterday', groupName: 'Nhóm cũ' }));
+
+  const after = createRegistry();
+  after.restore(before.snapshot());
+  const today = after.classify(post({ postId: 'today', groupKey: 'g2', groupName: 'Nhóm mới' }), {
+    isNewerThan: () => true,
+  });
+
+  assert.equal(today.status, 'new');
+  assert.equal(today.supersedes.identity, 'id:yesterday');
+});
+
 test('stats counts scanned and duplicate posts; reset clears them', () => {
   const registry = createRegistry();
   registry.classify(post({ postId: '1' }));

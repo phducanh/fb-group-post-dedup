@@ -194,6 +194,7 @@
 
   function summarize(entry) {
     return {
+      identity: entry.identity,
       authorName: entry.authorName || '',
       groupName: entry.groupName || '',
       postId: entry.postId || '',
@@ -254,13 +255,29 @@
    * nhớ giữa các lần mở trang (chỉ lưu hash, có hạn dùng).
    *
    * post: { postId, authorKey, authorName, groupKey, groupName, text }
+   * options.isNewerThan(originalIdentity, post): nếu trả true thì bài này MỚI hơn bản gốc
+   *   đang giữ, nên nó trở thành bản hiện còn bản cũ bị hạ thành bản trùng.
    * trả về null (không đủ nội dung để so) hoặc
-   *   { status: 'new' | 'duplicate', original: {authorName, groupName, postId} | null }
+   *   { status: 'new' | 'duplicate', identity, original: {identity, authorName, groupName,
+   *     postId} | null, supersedes?: {identity, ...} }  (supersedes chỉ có ở lần phân loại đó)
    */
   function createRegistry({ now = Date.now } = {}) {
     let results = new Map();
     let originals = [];
     let restoredCount = 0;
+
+    function newEntryFor(post, fingerprint, identity) {
+      return {
+        postId: post.postId,
+        authorKey: post.authorKey,
+        authorName: post.authorName,
+        groupKey: post.groupKey,
+        groupName: post.groupName,
+        identity,
+        fingerprint,
+        seenAt: now(),
+      };
+    }
 
     function classify(post, rawOptions) {
       const options = { ...DEFAULT_OPTIONS, ...rawOptions };
@@ -276,23 +293,30 @@
       );
 
       if (original) {
-        const result = { status: 'duplicate', original: summarize(original) };
-        results = new Map(results).set(identity, result);
-        return result;
+        const isNewer = Boolean(options.isNewerThan && options.isNewerThan(original.identity, post));
+        if (!isNewer) {
+          const result = { status: 'duplicate', identity, original: summarize(original) };
+          results = new Map(results).set(identity, result);
+          return result;
+        }
+
+        // Bài này mới hơn bản đang giữ: nó thành bản hiện, bản cũ bị hạ thành bản trùng.
+        const entry = newEntryFor(post, fingerprint, identity);
+        originals = originals.map((existing) => (existing === original ? entry : existing));
+        const demoted = { status: 'duplicate', identity: original.identity, original: summarize(entry) };
+        results = new Map(results)
+          .set(original.identity, demoted)
+          .set(identity, { status: 'new', identity, original: null });
+        return {
+          status: 'new',
+          identity,
+          original: null,
+          supersedes: summarize(original),
+        };
       }
 
-      const entry = {
-        postId: post.postId,
-        authorKey: post.authorKey,
-        authorName: post.authorName,
-        groupKey: post.groupKey,
-        groupName: post.groupName,
-        identity,
-        fingerprint,
-        seenAt: now(),
-      };
-      originals = [...originals, entry];
-      const result = { status: 'new', original: null };
+      originals = [...originals, newEntryFor(post, fingerprint, identity)];
+      const result = { status: 'new', identity, original: null };
       results = new Map(results).set(identity, result);
       return result;
     }

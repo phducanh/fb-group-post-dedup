@@ -48,6 +48,8 @@
   const attempts = new WeakMap();
   const verified = new WeakSet();
   const signatures = new WeakMap();
+  // identity -> element của bản đang hiện, để biết bài nào nằm cao hơn (mới hơn) trong feed.
+  const shownRoots = new Map();
   let scanFrame = null;
   let persistTimer = null;
   // Chỉ quét sau khi đã nạp xong bài đã nhớ, để không phân loại thiếu dữ liệu.
@@ -182,19 +184,21 @@
     return root.getAttribute('data-virtualized') === 'true';
   }
 
-  function describeOriginal(original) {
+  function describeOriginal(original, isOlderCopy) {
     const author = original.authorName || 'cùng người đăng';
     const group = original.groupName ? ` ở nhóm "${original.groupName}"` : '';
-    return `Bài trùng nội dung của ${author}, đã xem trước đó${group}`;
+    return isOlderCopy
+      ? `Bài cũ trùng nội dung của ${author}; bản mới nhất đang hiện${group}`
+      : `Bài trùng nội dung của ${author}, đã xem trước đó${group}`;
   }
 
-  function buildBanner(article, original) {
+  function buildBanner(article, original, isOlderCopy) {
     const banner = document.createElement('div');
     banner.className = 'dedup-banner';
 
     const text = document.createElement('span');
     text.className = 'dedup-banner__text';
-    text.textContent = describeOriginal(original);
+    text.textContent = describeOriginal(original, isOlderCopy);
 
     const toggle = document.createElement('button');
     toggle.type = 'button';
@@ -210,13 +214,13 @@
     return banner;
   }
 
-  function markDuplicate(article, original) {
+  function markDuplicate(article, original, isOlderCopy = false) {
     signatures.set(article, signatureOf(article));
     verified.add(article);
     article.dataset.dedupState = 'duplicate';
     article.style.display = 'none';
     if (settings.mode === 'collapse') {
-      const banner = buildBanner(article, original);
+      const banner = buildBanner(article, original, isOlderCopy);
       banner.dataset.dedupBanner = '1';
       article.before(banner);
     }
@@ -230,11 +234,23 @@
     });
   }
 
+  // Bài này có nằm cao hơn (mới hơn) bản đang hiện của originalIdentity không? Bản không
+  // còn element (đã nhớ từ lần trước, hoặc đã bị gỡ khỏi trang) luôn được coi là cũ hơn.
+  function isNewerThanShown(article, originalIdentity) {
+    const shown = shownRoots.get(originalIdentity);
+    if (!shown || !shown.isConnected) return true;
+    return Boolean(shown.compareDocumentPosition(article) & Node.DOCUMENT_POSITION_PRECEDING);
+  }
+
   function processArticle(article) {
     const tries = (attempts.get(article) || 0) + 1;
     attempts.set(article, tries);
 
-    const result = registry.classify(extractPost(article), settings);
+    const post = extractPost(article);
+    const result = registry.classify(post, {
+      ...settings,
+      isNewerThan: (originalIdentity) => isNewerThanShown(article, originalIdentity),
+    });
     if (!result) {
       if (tries >= MAX_EXTRACT_ATTEMPTS) handled.add(article);
       return;
@@ -245,7 +261,18 @@
       markDuplicate(article, result.original);
       return;
     }
+
+    shownRoots.set(result.identity, article);
+    if (result.supersedes) hideSupersededRoot(result.supersedes.identity, post);
     schedulePersist();
+  }
+
+  // Bản cũ đang hiện bị bài mới hơn thay thế: thu gọn nó và trỏ sang bản mới nhất.
+  function hideSupersededRoot(oldIdentity, newestPost) {
+    const oldRoot = shownRoots.get(oldIdentity);
+    shownRoots.delete(oldIdentity);
+    if (!oldRoot || !oldRoot.isConnected || oldRoot.dataset.dedupState) return;
+    markDuplicate(oldRoot, newestPost, true);
   }
 
   // Trả wrapper về trạng thái ban đầu để được phân loại lại.
@@ -258,6 +285,9 @@
     handled.delete(root);
     verified.delete(root);
     attempts.delete(root);
+    shownRoots.forEach((shown, identity) => {
+      if (shown === root) shownRoots.delete(identity);
+    });
   }
 
   // Chữ ký nhẹ (post id | tác giả | nhóm) lấy từ link, không phụ thuộc innerText
@@ -332,6 +362,7 @@
     isReady = false;
     restoreAll();
     registry.reset();
+    shownRoots.clear();
     handled = new WeakSet();
     loadSeen(() => {
       isReady = true;

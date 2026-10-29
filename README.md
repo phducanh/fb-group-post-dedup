@@ -23,6 +23,7 @@ Chrome extension (Manifest V3), không liên kết với Meta/Facebook. Thu gọ
 - Bài render lại bởi Facebook (cùng post id) không bị tính là trùng với chính nó.
 - Hỗ trợ cả trang Feeds (`sk=h_chr`, không có `role="article"`, mỗi bài là một `div[data-virtualized]`) lẫn feed thường. Bài bị Facebook làm rỗng khi cuộn ra ngoài màn hình sẽ được phân loại lại khi đổ nội dung lại.
 - Nhớ giữa các lần mở trang (mặc định bật): các bài gốc đã thấy được lưu vào `chrome.storage.local` trong 24 giờ, tối đa 500 bài. Chỉ lưu hash của nội dung (không lưu chữ gốc). Sau khi reload, bài mới trùng với bài đã nhớ sẽ bị thu gọn, còn chính bài gốc vẫn hiện. Tắt trong popup hoặc bấm **Xóa dữ liệu đã nhớ**.
+- Trong mỗi nhóm bài trùng, **bản mới nhất (nằm cao nhất trong feed) luôn được hiện**; các bản cũ hơn bị thu gọn. Nếu một bài nằm cao hơn bản đang hiện (ví dụ bài mới xuất hiện sau reload) thì nó thay thế bản cũ, và bản cũ được thu gọn kèm dòng "Bài cũ trùng nội dung…; bản mới nhất đang hiện ở nhóm …". Bài đã nhớ từ lần mở trước luôn được coi là cũ hơn bài đang thấy.
 - Nếu mở nhiều tab Facebook cùng lúc, tab ghi sau cùng sẽ ghi đè dữ liệu đã nhớ của tab trước.
 
 ## Nút Chặn nhanh ở comment
