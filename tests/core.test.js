@@ -298,9 +298,56 @@ test('classify results carry the identity of the post and of its original', () =
   const first = registry.classify(post({ postId: '1' }));
   const second = registry.classify(post({ postId: '2', groupKey: 'g2' }));
 
-  assert.equal(first.identity, 'id:1');
-  assert.equal(second.identity, 'id:2');
-  assert.equal(second.original.identity, 'id:1');
+  assert.equal(first.identity, 'id:1|g1|u:1');
+  assert.equal(second.identity, 'id:2|g2|u:1');
+  assert.equal(second.original.identity, 'id:1|g1|u:1');
+});
+
+test('shares of the same post in other groups are not mistaken for re-renders', () => {
+  const registry = createRegistry();
+  const shared = { postId: '99', linkedPostIds: ['99'], text: '' };
+  registry.classify(post({ ...shared, text: SALE_TEXT }));
+  const second = registry.classify(post({ ...shared, text: SALE_TEXT, groupKey: 'g2' }));
+  assert.equal(second.status, 'duplicate');
+});
+
+test('posts linking the same shared post are duplicates even with different captions', () => {
+  const registry = createRegistry();
+  registry.classify(post({ postId: '1', linkedPostIds: ['1', '99'], text: 'Mọi người xem giúp em bài này nhé' }));
+  const second = registry.classify(
+    post({ postId: '2', linkedPostIds: ['2', '99'], groupKey: 'g2', text: 'Share cho cả nhà cùng biết với ạ' })
+  );
+  assert.equal(second.status, 'duplicate');
+});
+
+test('shares of the same post by different people are duplicates even when sameAuthorOnly', () => {
+  const registry = createRegistry();
+  registry.classify(post({ postId: '1', linkedPostIds: ['1', '99'] }));
+  const other = registry.classify(
+    post({ postId: '2', linkedPostIds: ['2', '99'], authorKey: 'u:2', groupKey: 'g2', text: 'khác hẳn nội dung bài trên' })
+  );
+  assert.equal(other.status, 'duplicate');
+});
+
+test('the same Marketplace listing in several groups is a duplicate even without text', () => {
+  const registry = createRegistry();
+  const first = registry.classify(post({ postId: '1', listingIds: ['555'], text: '' }));
+  const second = registry.classify(post({ postId: '2', listingIds: ['555'], groupKey: 'g2', text: 'iPhone' }));
+  assert.equal(first.status, 'new');
+  assert.equal(second.status, 'duplicate');
+});
+
+test('posts without text or listing still wait for content', () => {
+  const registry = createRegistry();
+  assert.equal(registry.classify(post({ postId: '1', linkedPostIds: ['1'], text: '' })), null);
+});
+
+test('listing and linked post ids survive snapshot/restore', () => {
+  const before = createRegistry();
+  before.classify(post({ postId: '1', listingIds: ['555'], text: '' }));
+  const after = createRegistry();
+  after.restore(before.snapshot());
+  assert.equal(after.classify(post({ postId: '2', listingIds: ['555'], groupKey: 'g2', text: '' })).status, 'duplicate');
 });
 
 test('a newer post supersedes the older original and the older one becomes the duplicate', () => {
@@ -319,8 +366,8 @@ test('a newer post supersedes the older original and the older one becomes the d
   );
 
   assert.equal(newer.status, 'new');
-  assert.equal(newer.supersedes.identity, 'id:old');
-  assert.deepEqual(asked, ['id:old']);
+  assert.equal(newer.supersedes.identity, 'id:old|g1|u:1');
+  assert.deepEqual(asked, ['id:old|g1|u:1']);
   assert.equal(registry.classify(post({ postId: 'old' })).status, 'duplicate');
   assert.equal(registry.classify(post({ postId: 'old' })).original.groupName, 'Nhóm mới');
 });
@@ -347,7 +394,7 @@ test('after a supersede, further copies are duplicates of the newest post', () =
   });
 
   assert.equal(third.status, 'duplicate');
-  assert.equal(third.original.identity, 'id:new');
+  assert.equal(third.original.identity, 'id:new|g2|u:1');
 });
 
 test('a re-rendered superseding post is still shown, without superseding again', () => {
@@ -381,7 +428,7 @@ test('a restored original from a previous visit is superseded by the same post s
   });
 
   assert.equal(today.status, 'new');
-  assert.equal(today.supersedes.identity, 'id:yesterday');
+  assert.equal(today.supersedes.identity, 'id:yesterday|g1|u:1');
 });
 
 test('stats counts scanned and duplicate posts; reset clears them', () => {
@@ -452,4 +499,19 @@ test('realisticClick dispatches the full pointer/mouse sequence at the element c
   assert.equal(seen.every((event) => event.bubbles === true), true);
   delete global.MouseEvent;
   delete global.PointerEvent;
+});
+
+test('the same post id in the same group is never a duplicate of itself', () => {
+  const registry = createRegistry();
+  registry.classify(post({ postId: '1', authorKey: 'u:1' }));
+  // Trang chi tiết đọc tác giả khác dạng => identity khác, nhưng vẫn là chính bài đó.
+  const detail = registry.classify(post({ postId: '1', authorKey: 'n:nguyen.a' }), { sameAuthorOnly: false });
+  assert.equal(detail.status, 'new');
+});
+
+test('a duplicate opened on its detail page stays collapsed when not newer', () => {
+  const registry = createRegistry();
+  registry.classify(post({ postId: '1' }));
+  const detail = registry.classify(post({ postId: '2', groupKey: 'g2' }), { isNewerThan: () => false });
+  assert.equal(detail.status, 'duplicate');
 });

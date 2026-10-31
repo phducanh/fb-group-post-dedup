@@ -164,7 +164,23 @@
     return shared / smaller.shingles.size;
   }
 
+  function sharesAny(a, b) {
+    return Boolean(a && b) && a.some((value) => b.includes(value));
+  }
+
+  // Cùng tin rao Marketplace, hoặc bài chia sẻ cùng trỏ tới một bài: trùng mà không cần
+  // so nội dung (bài chia sẻ hay tin rao thường có rất ít chữ của chính bài đăng). Nội
+  // dung là của bài gốc nên không xét người chia sẻ (sameAuthorOnly không áp dụng).
+  function sharesReference(original, candidate) {
+    return (
+      sharesAny(original.listingIds, candidate.listingIds) ||
+      sharesAny(original.linkedPostIds, candidate.linkedPostIds)
+    );
+  }
+
   function isDuplicateOf(original, candidate, fingerprint, options) {
+    if (sharesReference(original, candidate)) return true;
+
     const bothAuthorsKnown = Boolean(original.authorKey && candidate.authorKey);
     if (
       options.sameAuthorOnly &&
@@ -173,6 +189,8 @@
     ) {
       return false;
     }
+
+    if (fingerprint.length < MIN_TEXT_LENGTH) return false;
 
     const isAuthorConfirmed = options.sameAuthorOnly && bothAuthorsKnown;
     if (!isAuthorConfirmed && fingerprint.length < MIN_TEXT_LENGTH_WITHOUT_AUTHOR_MATCH) {
@@ -187,8 +205,11 @@
     return similarity(original.fingerprint, fingerprint) >= threshold;
   }
 
+  // postId có thể là id của bài được chia sẻ (link thời gian của Facebook thường là "#"),
+  // nên kèm nhóm + tác giả để các lượt chia sẻ cùng một bài ở nhiều nhóm không bị coi
+  // là cùng một bài render lại.
   function identityOf(post, fingerprint) {
-    if (post.postId) return `id:${post.postId}`;
+    if (post.postId) return `id:${post.postId}|${post.groupKey || ''}|${post.authorKey || ''}`;
     return `tx:${post.groupKey || ''}|${post.authorKey || ''}|${fingerprint.prefixDigest}`;
   }
 
@@ -209,11 +230,17 @@
       authorName: entry.authorName || '',
       groupKey: entry.groupKey || '',
       groupName: entry.groupName || '',
+      listingIds: entry.listingIds,
+      linkedPostIds: entry.linkedPostIds,
       seenAt: entry.seenAt,
       length: entry.fingerprint.length,
       digest: entry.fingerprint.digest,
       shingles: [...entry.fingerprint.shingles],
     };
+  }
+
+  function toIdList(value) {
+    return Array.isArray(value) ? value.filter((id) => typeof id === 'string' && id) : [];
   }
 
   // Dữ liệu đọc từ storage là input bên ngoài: kiểm tra hình dạng trước khi dùng.
@@ -238,6 +265,8 @@
       authorName: String(saved.authorName || ''),
       groupKey: String(saved.groupKey || ''),
       groupName: String(saved.groupName || ''),
+      listingIds: toIdList(saved.listingIds),
+      linkedPostIds: toIdList(saved.linkedPostIds),
       seenAt: saved.seenAt,
       fingerprint: {
         length: saved.length,
@@ -254,7 +283,9 @@
    * bao giờ tự coi mình là bản trùng. Bài gốc có thể snapshot()/restore() để
    * nhớ giữa các lần mở trang (chỉ lưu hash, có hạn dùng).
    *
-   * post: { postId, authorKey, authorName, groupKey, groupName, text }
+   * post: { postId, authorKey, authorName, groupKey, groupName, text,
+   *   listingIds?: string[] (id tin rao Marketplace), linkedPostIds?: string[] (id các bài
+   *   mà bài này trỏ tới, gồm cả bài được chia sẻ) }
    * options.isNewerThan(originalIdentity, post): nếu trả true thì bài này MỚI hơn bản gốc
    *   đang giữ, nên nó trở thành bản hiện còn bản cũ bị hạ thành bản trùng.
    * trả về null (không đủ nội dung để so) hoặc
@@ -273,6 +304,8 @@
         authorName: post.authorName,
         groupKey: post.groupKey,
         groupName: post.groupName,
+        listingIds: toIdList(post.listingIds),
+        linkedPostIds: toIdList(post.linkedPostIds),
         identity,
         fingerprint,
         seenAt: now(),
@@ -282,14 +315,20 @@
     function classify(post, rawOptions) {
       const options = { ...DEFAULT_OPTIONS, ...rawOptions };
       const fingerprint = buildFingerprint(post.text);
-      if (fingerprint.length < MIN_TEXT_LENGTH) return null;
+      // Tin rao Marketplace có id riêng nên phân loại được cả khi chưa đọc được chữ.
+      const hasListing = toIdList(post.listingIds).length > 0;
+      if (fingerprint.length < MIN_TEXT_LENGTH && !hasListing) return null;
 
       const identity = identityOf(post, fingerprint);
       const known = results.get(identity);
       if (known) return known;
 
-      const original = originals.find((entry) =>
-        isDuplicateOf(entry, post, fingerprint, options)
+      // Cùng id bài trong cùng nhóm là chính bài đó (trang chi tiết có thể đọc tác giả/nhóm
+      // khác bảng tin nên identity lệch): không bao giờ tự coi là bản trùng của chính mình.
+      const isSamePost = (entry) =>
+        Boolean(post.postId) && entry.postId === post.postId && entry.groupKey === post.groupKey;
+      const original = originals.find(
+        (entry) => !isSamePost(entry) && isDuplicateOf(entry, post, fingerprint, options)
       );
 
       if (original) {

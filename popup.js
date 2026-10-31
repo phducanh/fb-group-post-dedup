@@ -105,9 +105,10 @@
       const tab = tabs && tabs[0];
       if (!tab || tab.id === undefined) return showReport('Không tìm thấy tab đang mở.');
 
-      const [posts, comments] = await Promise.all([
+      const [posts, comments, auctions] = await Promise.all([
         sendToTab(tab.id, { type: 'diagnose' }),
         sendToTab(tab.id, { type: 'diagnoseComments' }),
+        sendToTab(tab.id, { type: 'diagnoseAuctions' }),
       ]);
       if (!posts && !comments) {
         return showReport(
@@ -115,7 +116,7 @@
         );
       }
       // comments = null nghĩa là tab đang chạy bản cũ (chưa nạp comment-block.js).
-      showReport(JSON.stringify({ posts, comments }, null, 2));
+      showReport(JSON.stringify({ posts, comments, auctions }, null, 2));
     });
   }
 
@@ -126,6 +127,9 @@
   }
 
   document.getElementById('diagnose').addEventListener('click', runDiagnose);
+  document.getElementById('openAuctions').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('auctions.html') });
+  });
   document.getElementById('clearSeen').addEventListener('click', clearSeen);
 
   chrome.storage.sync.get(DEFAULTS, (stored) => {

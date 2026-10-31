@@ -2,9 +2,11 @@
 
 // Service worker: mở tab nền để chặn qua trang cá nhân (khi menu comment không có mục
 // "Chặn"), xác nhận đúng tab đó với profile-block.js, đóng tab và báo kết quả về tab gốc.
-importScripts('core.js');
+// Điều phối quét bài đấu giá nằm ở auction-sweep.js.
+importScripts('core.js', 'auction-core.js', 'auction-sweep.js');
 
 const { toProfileUrl } = globalThis.DedupCore;
+const { AuctionSweep } = globalThis;
 
 const STORAGE_KEY = 'blockTabs';
 const BLOCK_HASH = '#dedup-block';
@@ -71,8 +73,21 @@ async function profileBlockDone(message, sender) {
   return { ok: true };
 }
 
+async function openAuctions() {
+  await chrome.tabs.create({ url: chrome.runtime.getURL('auctions.html') });
+  return { ok: true };
+}
+
 async function handleMessage(message, sender) {
   switch (message && message.type) {
+    case 'openAuctions':
+      return openAuctions();
+    case 'startAuctionSweep':
+      return AuctionSweep.start({ force: Boolean(message.force) });
+    case 'stopAuctionSweep':
+      return AuctionSweep.stop();
+    case 'auctionSweepStepDone':
+      return AuctionSweep.onStepDone(sender, message);
     case 'startProfileBlock':
       return startProfileBlock(message, sender);
     case 'profileBlockHello':
@@ -92,3 +107,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => removeEntry(tabId));
+chrome.tabs.onUpdated.addListener((tabId, info) => AuctionSweep.onTabUpdated(tabId, info));
+chrome.windows.onRemoved.addListener((windowId) => AuctionSweep.onWindowRemoved(windowId));
+chrome.alarms.onAlarm.addListener((alarm) => AuctionSweep.onAlarm(alarm));

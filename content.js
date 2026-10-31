@@ -9,6 +9,7 @@
   const MAX_EXTRACT_ATTEMPTS = 60;
   const DIAGNOSE_MAX_ARTICLES = 12;
   const DIAGNOSE_TEXT_PREVIEW = 40;
+  const DIAGNOSE_MAX_LINK_SHAPES = 25;
   const ARTICLE_SELECTOR = '[role="article"]';
   // Trang Feeds (sk=h_chr) không dùng role="article"; mỗi bài là một wrapper
   // data-virtualized, còn bài ngoài màn hình bị Facebook làm rỗng (="true").
@@ -30,7 +31,9 @@
     /\/permalink\/(\d+)/,
     /\/(?:videos|reel)\/(\d+)/,
   ];
+  const LISTING_ID_PATTERNS = [/\/marketplace\/item\/(\d+)/, /\/commerce\/listing\/(\d+)/];
   const GROUP_PATH = /^\/groups\/([^/]+)\/?$/;
+  const POST_PAGE_PATTERN = /^\/(?:groups\/[^/]+\/(?:posts|permalink)\/[^/]+|[^/]+\/posts\/[^/]+|permalink\.php)\/?$/;
   const GROUP_USER_PATH = /^\/groups\/[^/]+\/user\/(\d+)\/?$/;
   const PROFILE_PATH = /^\/([A-Za-z0-9.]+)\/?$/;
 
@@ -63,39 +66,63 @@
     }
   }
 
-  // Số role="article" bao quanh node (tính trong root). >= 2 nghĩa là comment.
-  function articleDepth(node, root) {
-    let depth = 0;
+  // Các role="article" bao quanh node (trong root), từ trong ra ngoài.
+  function enclosingArticles(node, root) {
+    const chain = [];
     let article = node.closest(ARTICLE_SELECTOR);
     while (article && root.contains(article)) {
-      depth += 1;
+      chain.push(article);
       article = article.parentElement && article.parentElement.closest(ARTICLE_SELECTOR);
     }
-    return depth;
+    return chain;
   }
 
+  // Article lồng trong bài thường là comment, nhưng bài được chia sẻ cũng có thể là một
+  // article lồng (không có nhãn comment); nội dung đó vẫn tính là của bài.
   function isOwnNode(node, root) {
-    return articleDepth(node, root) < NESTED_ARTICLE_DEPTH;
+    const chain = enclosingArticles(node, root);
+    if (chain.length < NESTED_ARTICLE_DEPTH) return true;
+    return chain
+      .slice(0, chain.length - 1)
+      .every((article) => !isCommentLabel(article.getAttribute('aria-label')));
   }
 
   function ownLinks(root) {
     return [...root.querySelectorAll('a[href]')].filter((link) => isOwnNode(link, root));
   }
 
-  function extractPostId(root) {
-    for (const link of root.querySelectorAll('a[href]')) {
-      const url = parseUrl(link);
-      if (!url) continue;
-      const storyFbid = url.searchParams.get('story_fbid');
-      if (storyFbid) return storyFbid;
-      const photoSet = (url.searchParams.get('set') || '').match(/^pcb\.(\d+)/);
-      if (photoSet) return photoSet[1];
-      for (const pattern of POST_ID_PATTERNS) {
-        const match = url.pathname.match(pattern);
-        if (match) return match[1];
-      }
+  function postIdOf(url) {
+    const storyFbid = url.searchParams.get('story_fbid');
+    if (storyFbid) return storyFbid;
+    const photoSet = (url.searchParams.get('set') || '').match(/^pcb\.(\d+)/);
+    if (photoSet) return photoSet[1];
+    for (const pattern of POST_ID_PATTERNS) {
+      const match = url.pathname.match(pattern);
+      if (match) return match[1];
     }
     return '';
+  }
+
+  function collectIds(links, idOf) {
+    const ids = new Set();
+    links.forEach((link) => {
+      const url = parseUrl(link);
+      const id = url && idOf(url);
+      if (id) ids.add(id);
+    });
+    return [...ids];
+  }
+
+  function listingIdOf(url) {
+    for (const pattern of LISTING_ID_PATTERNS) {
+      const match = url.pathname.match(pattern);
+      if (match) return match[1];
+    }
+    return '';
+  }
+
+  function extractPostId(links) {
+    return collectIds(links, postIdOf)[0] || '';
   }
 
   function extractAuthor(links) {
@@ -118,7 +145,8 @@
 
       const profileId = url.pathname === '/profile.php' && url.searchParams.get('id');
       const username = (url.pathname.match(PROFILE_PATH) || [])[1];
-      if (profileId) return { authorKey: `p:${profileId}`, authorName: link.textContent.trim() };
+      // Cùng id người dùng với link /groups/<nhóm>/user/<id> ở bảng tin nhóm.
+      if (profileId) return { authorKey: `u:${profileId}`, authorName: link.textContent.trim() };
       if (username && !RESERVED_PATHS.has(username.toLowerCase())) {
         return { authorKey: `n:${username.toLowerCase()}`, authorName: link.textContent.trim() };
       }
@@ -138,12 +166,14 @@
     return { groupKey: pageGroup ? pageGroup[1] : '', groupName: '' };
   }
 
+  // Bài chia sẻ có thể có hai khối nội dung (lời bình + bài gốc) nên ghép tất cả lại.
   function extractText(root) {
     for (const selector of MESSAGE_SELECTORS) {
-      const node = [...root.querySelectorAll(selector)].find(
-        (candidate) => isOwnNode(candidate, root) && candidate.innerText.trim()
-      );
-      if (node) return node.innerText;
+      const texts = [...root.querySelectorAll(selector)]
+        .filter((candidate) => isOwnNode(candidate, root))
+        .map((candidate) => candidate.innerText.trim())
+        .filter(Boolean);
+      if (texts.length > 0) return texts.join('\n');
     }
 
     let longest = '';
@@ -157,8 +187,11 @@
 
   function extractPost(root) {
     const links = ownLinks(root);
+    const linkedPostIds = collectIds(links, postIdOf);
     return {
-      postId: extractPostId(root),
+      postId: linkedPostIds[0] || '',
+      listingIds: collectIds(links, listingIdOf),
+      linkedPostIds,
       ...extractAuthor(links),
       ...extractGroup(links),
       text: extractText(root),
@@ -234,9 +267,17 @@
     });
   }
 
+  // Trang chi tiết một bài (mở từ link bài, thông báo...): không có thứ tự bảng tin.
+  function isPostDetailPage() {
+    const url = new URL(location.href);
+    return POST_PAGE_PATTERN.test(url.pathname) || url.searchParams.has('story_fbid');
+  }
+
   // Bài này có nằm cao hơn (mới hơn) bản đang hiện của originalIdentity không? Bản không
   // còn element (đã nhớ từ lần trước, hoặc đã bị gỡ khỏi trang) luôn được coi là cũ hơn.
+  // Trên trang chi tiết thì không so được thứ tự: bài trùng luôn bị thu gọn.
   function isNewerThanShown(article, originalIdentity) {
+    if (isPostDetailPage()) return false;
     const shown = shownRoots.get(originalIdentity);
     if (!shown || !shown.isConnected) return true;
     return Boolean(shown.compareDocumentPosition(article) & Node.DOCUMENT_POSITION_PRECEDING);
@@ -294,7 +335,7 @@
   // nên đọc được cả khi wrapper đang display:none.
   function signatureOf(root) {
     const links = ownLinks(root);
-    const parts = [extractPostId(root), extractAuthor(links).authorKey, extractGroup(links).groupKey];
+    const parts = [extractPostId(links), extractAuthor(links).authorKey, extractGroup(links).groupKey];
     return parts.some(Boolean) ? parts.join('|') : '';
   }
 
@@ -396,6 +437,48 @@
     applySettings(updates);
   });
 
+  // Dạng đường dẫn không lộ id/tên: số thay bằng N, đoạn chữ dài thay bằng *.
+  function linkShape(link) {
+    const href = link.getAttribute('href') || '';
+    if (!href || href === '#') return href || '(empty)';
+    const url = parseUrl(link);
+    if (!url) return '(invalid)';
+    const path = url.pathname
+      .split('/')
+      .map((part) => (/\d/.test(part) ? 'N' : part.length > 20 ? '*' : part))
+      .join('/');
+    const params = [...url.searchParams.keys()].filter((key) => !key.startsWith('__')).join(',');
+    return params ? `${path}?${params}` : path;
+  }
+
+  function describeStructure(root) {
+    const nested = [...root.querySelectorAll(ARTICLE_SELECTOR)].filter((node) => node !== root);
+    const messageNodes = [...root.querySelectorAll(MESSAGE_SELECTORS.join(','))];
+    const allLinks = [...root.querySelectorAll('a[href]')];
+    const own = new Set(ownLinks(root));
+    return {
+      isWrapper: !root.matches(ARTICLE_SELECTOR),
+      nestedArticles: nested.map((node) => ({
+        isComment: isCommentLabel(node.getAttribute('aria-label')),
+        hasLabel: node.hasAttribute('aria-label'),
+        hasLabelledBy: node.hasAttribute('aria-labelledby'),
+      })),
+      messageNodes: messageNodes.map((node) => ({
+        own: isOwnNode(node, root),
+        length: node.innerText.trim().length,
+      })),
+      ownLinkShapes: [...new Set([...own].map(linkShape))].slice(0, DIAGNOSE_MAX_LINK_SHAPES),
+      otherLinkShapes: [...new Set(allLinks.filter((l) => !own.has(l)).map(linkShape))].slice(
+        0,
+        DIAGNOSE_MAX_LINK_SHAPES
+      ),
+      dirAutoLengths: [...root.querySelectorAll('[dir="auto"]')]
+        .filter((node) => isOwnNode(node, root))
+        .map((node) => `${node.tagName.toLowerCase()}:${(node.innerText || '').trim().length}`)
+        .slice(0, DIAGNOSE_MAX_LINK_SHAPES),
+    };
+  }
+
   function diagnose() {
     const articles = topLevelArticles();
     return {
@@ -421,12 +504,15 @@
           attempts: attempts.get(article) || 0,
           state: article.dataset.dedupState || '',
           postId: post.postId,
+          listingIds: post.listingIds,
+          linkedPostIds: post.linkedPostIds,
           authorKey: post.authorKey,
           authorName: post.authorName,
           groupKey: post.groupKey,
           groupName: post.groupName,
           textLength: post.text.length,
           textPreview: post.text.slice(0, DIAGNOSE_TEXT_PREVIEW),
+          structure: describeStructure(article),
         };
       }),
     };

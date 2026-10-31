@@ -4,7 +4,7 @@
   "short_name": "Post Dedup",
   "version": "1.0.0",
   "description": "Thu gọn hoặc ẩn các bài trùng nội dung của cùng một người đăng ở nhiều nhóm trên bảng tin, để bạn không đọc lại.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "alarms"],
   "background": {
     "service_worker": "background.js"
   },
@@ -24,7 +24,14 @@
   "content_scripts": [
     {
       "matches": ["*://*.facebook.com/*"],
-      "js": ["core.js", "content.js", "comment-block.js", "profile-block.js"],
+      "js": [
+        "core.js",
+        "auction-core.js",
+        "content.js",
+        "comment-block.js",
+        "profile-block.js",
+        "auction.js"
+      ],
       "css": ["content.css"],
       "run_at": "document_idle"
     }

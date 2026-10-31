@@ -12,14 +12,20 @@ OUT_FILE="$OUT_DIR/group-post-dedup-$VERSION.zip"
 FILES=(
   manifest.json
   core.js
+  auction-core.js
   content.js
   comment-block.js
   profile-block.js
+  auction.js
   background.js
+  auction-sweep.js
   content.css
   popup.html
   popup.css
   popup.js
+  auctions.html
+  auctions.css
+  auctions.js
   icons/icon16.png
   icons/icon48.png
   icons/icon128.png

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bài đấu giá</title>
+    <link rel="stylesheet" href="auctions.css" />
+  </head>
+  <body>
+    <main>
+      <header class="top">
+        <div>
+          <h1>Bài đấu giá</h1>
+          <p id="summary" class="muted" aria-live="polite">Đang tải…</p>
+          <p id="sweepStatus" class="sweep-status" aria-live="polite"></p>
+        </div>
+        <div class="actions">
+          <button type="button" id="sweepNow" class="primary">Quét ngay</button>
+          <button type="button" id="sweepStop" hidden>Dừng quét</button>
+          <label class="row">
+            <input type="checkbox" id="autoSweep" />
+            <span>Tự quét khi mở danh sách</span>
+          </label>
+          <label class="row">
+            <span>Sắp xếp</span>
+            <select id="sort">
+              <option value="deadline">Sắp kết thúc</option>
+              <option value="newest">Bài mới nhất</option>
+            </select>
+          </label>
+          <label class="row">
+            <input type="checkbox" id="hideEnded" />
+            <span>Ẩn bài đã kết thúc</span>
+          </label>
+          <button type="button" id="exportCsv">Tải CSV</button>
+          <button type="button" id="clearData" class="danger">Xóa dữ liệu</button>
+        </div>
+      </header>
+
+      <section class="groups">
+        <h2>Cài đặt quét</h2>
+        <div class="settings">
+          <label class="row">
+            <span>Chỉ quét bài đăng trong</span>
+            <input type="number" id="maxAgeDays" min="1" max="60" step="1" />
+            <span>ngày gần nhất</span>
+          </label>
+          <label class="row">
+            <input type="checkbox" id="skipLocked" />
+            <span>Bỏ qua bài đã khoá bình luận</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="groups">
+        <h2>Nhóm theo dõi</h2>
+        <p class="muted">
+          Khi quét, một cửa sổ nhỏ mở các nhóm rồi từng bài còn hạn để đọc hết bình luận, xong tự
+          đóng. Đừng thu nhỏ hay che kín cửa sổ đó: Chrome ngừng vẽ cửa sổ bị che nên Facebook
+          không tải thêm bài.
+        </p>
+        <div id="groupLinks" class="group-links"></div>
+        <label class="field">
+          <span>Id hoặc tên nhóm (mỗi dòng một nhóm)</span>
+          <textarea id="groupsInput" rows="3" spellcheck="false"></textarea>
+        </label>
+        <button type="button" id="saveGroups">Lưu danh sách nhóm</button>
+      </section>
+
+      <section id="samplesSection" class="groups" hidden>
+        <h2>Bài chưa đọc được hết thông tin (<span id="samplesCount">0</span>)</h2>
+        <p class="muted">
+          Khi quét, các bài thiếu hạn / giá / link (hoặc có comment có số mà không hiểu là giá) được mở
+          qua link và lưu lại nội dung ở đây. Bấm <strong>Copy báo cáo</strong> rồi gửi để bổ sung kiểu
+          viết vào bộ đọc; sau khi cập nhật extension, các bài này được đọc lại tự động.
+        </p>
+        <div class="actions">
+          <button type="button" id="copySamples" class="primary">Copy báo cáo</button>
+          <button type="button" id="clearSamples">Xóa mẫu</button>
+          <span id="copyStatus" class="muted" aria-live="polite"></span>
+        </div>
+        <div id="samples" class="samples"></div>
+      </section>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Kết thúc</th>
+              <th scope="col">Giá cao nhất</th>
+              <th scope="col">Bài</th>
+              <th scope="col">Nhóm</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <p id="empty" class="empty" hidden>Chưa có bài đấu giá nào. Mở một nhóm theo dõi để bắt đầu quét.</p>
+      </div>
+    </main>
+    <script src="auction-core.js"></script>
+    <script src="auctions.js"></script>
+  </body>
+</html>
