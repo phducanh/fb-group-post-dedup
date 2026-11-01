@@ -37,6 +37,7 @@
   // Album ảnh của bài trong nhóm: set=gm.<id bài> hoặc set=pcb.<id bài>.
   const PHOTO_SET_PATTERN = /^(?:gm|pcb)\.(\d+)/;
   const FEED_SELECTOR = '[role="feed"]';
+  const MAIN_SELECTOR = '[role="main"]';
   const GROUP_PATH = /^\/groups\/([^/?#]+)/;
   const SEE_MORE_PATTERN = /^(xem thêm|see more)$/i;
   // "Xem thêm bình luận", "Xem 5 phản hồi", "View more comments", "View 3 replies"...
@@ -51,11 +52,12 @@
   const AUTO_SCROLL_MAX_STEPS = 60;
   const AUTO_SCROLL_MAX_IDLE_STEPS = 6;
   const MAX_RECORDS = 500;
+  const RECORD_TEXT_LIMIT = 1500;
   const KEEP_AFTER_DEADLINE_MS = 7 * 24 * 60 * 60 * 1000;
   const KEEP_UNDATED_MS = 14 * 24 * 60 * 60 * 1000;
   // Quét tự động (auction-sweep.js mở tab này và gửi từng bước).
   const SWEEP_PAGE_WAIT_MS = 20000;
-  const SWEEP_SCROLL_STEPS = 30;
+  const SWEEP_SCROLL_STEPS = 100;
   const SWEEP_MAX_COMMENT_CLICKS = 80;
   const SWEEP_IDLE_CHECKS = 3;
   const SWEEP_SETTLE_MS = 1500;
@@ -76,6 +78,10 @@
   // Quét nhóm tìm bài mới: gặp chừng này bài đã có trong danh sách liên tiếp là đã tới phần
   // đã quét lần trước (bài cũ đã được cập nhật qua link riêng).
   const KNOWN_POSTS_TO_STOP = 5;
+  // Facebook thường không cho đọc ngày đăng: gặp chừng này bài đấu giá đã kết thúc quá 1 ngày
+  // là đã cuộn qua hết các phiên đang diễn ra.
+  const ENDED_POSTS_TO_STOP = 8;
+  const ENDED_STOP_MS = DAY_MS;
   // Mẫu nội dung của bài chưa đọc được hết thông tin (xem ở trang danh sách, gửi để sửa bộ đọc).
   const SAMPLES_KEY = 'auctionSamples';
   const MAX_SAMPLES = 50;
@@ -99,6 +105,8 @@
   let settings = readSettings({});
   const oldPosts = new WeakSet();
   let oldPostCount = 0;
+  const endedPosts = new WeakSet();
+  let endedPostCount = 0;
   // Bước quét nhóm: id các bài đã có trong danh sách (bỏ qua, chỉ tìm bài mới).
   let sweepKnownIds = null;
   let knownRun = 0;
@@ -204,7 +212,10 @@
     });
   }
 
+  // Bài chính của trang bài viết lấy id từ URL: trong bài có thể có link tới bài khác.
   function postIdOf(post, isMainPost) {
+    const fromPage = isMainPost ? postIdFromUrl(new URL(location.href)) : '';
+    if (fromPage) return fromPage;
     for (const link of post.querySelectorAll('a[href]')) {
       if (!belongsTo(link, post)) continue;
       const id = postIdFromUrl(parseUrl(link.getAttribute('href')));
@@ -244,17 +255,73 @@
     return !parent;
   }
 
+  // Hộp thoại bài viết (mở bài từ bảng tin). Khung chat Messenger cũng là role="dialog" nhưng
+  // không có khối nội dung bài.
+  function postDialog() {
+    return [...document.querySelectorAll('[role="dialog"]')].find((dialog) => dialog.querySelector(MESSAGE_SELECTORS)) || null;
+  }
+
+  // Vùng có bài và bình luận: hộp thoại bài viết và nội dung chính của trang, không gồm
+  // khung chat, thanh bên hay thông báo.
+  function contentRoots() {
+    const roots = [postDialog(), document.querySelector(MAIN_SELECTOR)].filter(Boolean);
+    return roots.length > 0 ? roots : [document.body];
+  }
+
+  function inContent(node, roots) {
+    return roots.some((root) => root.contains(node));
+  }
+
   // Bài là role="article" ngoài cùng; ở bảng tin nhóm mới, khối con của role="feed" không
   // có role="article" thì chính khối đó là bài.
   function postRoots() {
-    const articles = [...document.querySelectorAll(ARTICLE_SELECTOR)].filter(isTopLevelPost);
+    const roots = contentRoots();
+    const articles = [...document.querySelectorAll(ARTICLE_SELECTOR)].filter(
+      (article) => inContent(article, roots) && isTopLevelPost(article)
+    );
     const units = [...document.querySelectorAll(`${FEED_SELECTOR} > *`)].filter(
       (unit) =>
+        inContent(unit, roots) &&
         !unit.closest(ARTICLE_SELECTOR) &&
         !articles.some((article) => unit.contains(article)) &&
         unit.textContent.trim()
     );
     return [...articles, ...units];
+  }
+
+  function hasOwnMessage(node) {
+    return [...node.querySelectorAll(MESSAGE_SELECTORS)].some((message) => belongsTo(message, node));
+  }
+
+  function linksToPost(post, postId) {
+    return [...post.querySelectorAll('a[href]')].some(
+      (link) => belongsTo(link, post) && postIdFromUrl(parseUrl(link.getAttribute('href'))) === postId
+    );
+  }
+
+  /**
+   * Các bài trên trang và bài chính (trang bài viết / hộp thoại bài viết). Facebook có thể chèn
+   * khối khác lên trước bài chính (comment không có nhãn, bài khác của nhóm) nên không lấy khối
+   * đầu tiên: ưu tiên bài có nội dung bài và link tới đúng id trên URL; bài chính không nằm
+   * trong role="article" nào thì lấy cả vùng bài viết (comment vẫn bị loại khi đọc nội dung).
+   * picked: cách chọn bài chính, ghi vào mẫu nội dung để chẩn đoán.
+   */
+  function pageModel() {
+    const posts = postRoots();
+    if (!isPermalinkPage()) return { posts, mainPost: null, picked: '' };
+    const id = postIdFromUrl(new URL(location.href));
+    const withMessage = posts.filter(hasOwnMessage);
+    const byId = (list) => list.find((post) => linksToPost(post, id));
+    const pick = (mainPost, picked) => ({ posts, mainPost, picked });
+    if (byId(withMessage)) return pick(byId(withMessage), 'message+id');
+    if (withMessage.length === 1) return pick(withMessage[0], 'message');
+    const scope = postDialog() || document.querySelector(MAIN_SELECTOR);
+    if (scope && withMessage.length === 0 && hasOwnMessage(scope)) {
+      return { posts: [...posts, scope], mainPost: scope, picked: 'scope' };
+    }
+    if (byId(posts)) return pick(byId(posts), 'id');
+    if (withMessage.length > 0) return pick(withMessage[0], 'first-message');
+    return pick(posts[0] || null, 'first');
   }
 
   // Comment nằm trong bài (bảng tin) hoặc đứng ngang hàng với bài (hộp thoại/trang bài viết).
@@ -268,8 +335,9 @@
 
   function collectComments(posts, mainPost) {
     const byPost = new Map(posts.map((post) => [post, []]));
+    const roots = contentRoots();
     document.querySelectorAll(ARTICLE_SELECTOR).forEach((article) => {
-      if (!isComment(article)) return;
+      if (!isComment(article) || !inContent(article, roots)) return;
       const owner = ownerOf(article, posts, mainPost);
       if (owner && byPost.has(owner)) byPost.get(owner).push(article);
     });
@@ -396,6 +464,9 @@
       const parsed = parseAuctionPost(next.text, firstSeenAt);
       Object.assign(merged, {
         title: parsed.title,
+        product: parsed.product,
+        // Giữ nội dung bài để đọc lại (tên sản phẩm, ...) khi bộ đọc được cập nhật.
+        text: next.text.slice(0, RECORD_TEXT_LIMIT),
         textLength: next.text.length,
         deadlineAt: parsed.deadline ? parsed.deadline.at : null,
         deadlineRaw: parsed.deadline ? parsed.deadline.raw : '',
@@ -456,7 +527,7 @@
   function loadMoreComments() {
     moreCommentsTimer = null;
     if (sweeping || !currentGroup() || moreCommentsClicks >= MAX_MORE_COMMENTS_CLICKS) return;
-    const scope = document.querySelector('[role="dialog"]') || (isPermalinkPage() ? document : null);
+    const scope = postDialog() || (isPermalinkPage() ? document.querySelector(MAIN_SELECTOR) || document : null);
     if (!scope) return;
     const button = [...scope.querySelectorAll('[role="button"]')].find((node) =>
       MORE_COMMENTS_PATTERN.test(node.innerText.trim())
@@ -477,6 +548,7 @@
       lastPath = location.pathname;
       moreCommentsClicks = 0;
       oldPostCount = 0;
+      endedPostCount = 0;
       seenThisPage.clear();
     }
 
@@ -487,8 +559,7 @@
       return;
     }
 
-    const posts = postRoots();
-    const mainPost = isPermalinkPage() ? posts[0] || null : null;
+    const { posts, mainPost } = pageModel();
     const comments = collectComments(posts, mainPost);
 
     missingLinkCount = 0;
@@ -517,11 +588,20 @@
       const locked = commentsLocked(post, post === mainPost);
       const queued = queueRecord(group, postId, post, comments.get(post) || [], { postedAt, locked });
       if (queued && !postId) missingLinkCount += 1;
+      if (queued && sweepKnownIds) countEnded(post);
     });
     knownRun = run;
 
     renderPanel();
     scheduleMoreComments();
+  }
+
+  function countEnded(post) {
+    if (endedPosts.has(post)) return;
+    const deadline = parseDeadline(postText(post));
+    if (!deadline || deadline.at >= Date.now() - ENDED_STOP_MS) return;
+    endedPosts.add(post);
+    endedPostCount += 1;
   }
 
   function scheduleScan() {
@@ -609,11 +689,11 @@
   }
 
   function sweepScope() {
-    return document.querySelector('[role="dialog"]') || document;
+    return postDialog() || document.querySelector(MAIN_SELECTOR) || document;
   }
 
   function pageReady() {
-    return currentGroup() && document.querySelector(`${ARTICLE_SELECTOR}, ${FEED_SELECTOR} > *`);
+    return currentGroup() && postRoots().length > 0;
   }
 
   // Tham số sorting_setting không phải lúc nào cũng có tác dụng: chọn "Bài viết mới" ở nút
@@ -674,7 +754,10 @@
       startAutoScroll(
         SWEEP_SCROLL_STEPS,
         resolve,
-        () => oldPostCount >= OLD_POSTS_TO_STOP || knownRun >= KNOWN_POSTS_TO_STOP
+        () =>
+          oldPostCount >= OLD_POSTS_TO_STOP ||
+          knownRun >= KNOWN_POSTS_TO_STOP ||
+          endedPostCount >= ENDED_POSTS_TO_STOP
       )
     );
   }
@@ -698,8 +781,7 @@
   // Ảnh chụp nội dung bài vừa mở qua link: chỉ giữ khi còn thiếu thông tin hoặc có comment
   // có số mà không đọc được thành giá.
   function captureSample(step) {
-    const posts = postRoots();
-    const main = posts[0];
+    const { posts, mainPost: main, picked } = pageModel();
     if (!main) return null;
     const text = postText(main);
     const commentTexts = (collectComments(posts, main).get(main) || []).map(commentText);
@@ -723,6 +805,8 @@
       text: text.slice(0, SAMPLE_TEXT_LIMIT),
       commentCount: commentTexts.length,
       unreadComments: unreadComments(commentTexts),
+      picked,
+      postRoots: posts.length,
     };
   }
 

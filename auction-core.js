@@ -29,6 +29,20 @@
   const LOT_LINE_PATTERN = new RegExp(String.raw`^\s*${LOT_PREFIX}\s*\.?\s*(\d{1,2})(?!\d)\s*[:.\-)]?\s*`);
   // Bài nhiều món phải có ít nhất chừng này suất (một dòng "S1" lẻ có thể là chuyện khác).
   const MIN_LOTS = 2;
+  // Tên sản phẩm: tìm trong vài dòng đầu bài.
+  const PRODUCT_MAX_LENGTH = 100;
+  const PRODUCT_SEARCH_LINES = 6;
+  const PRODUCT_LABEL_PATTERN =
+    /^[^a-z0-9]*(ten (san pham|sp|mon|hang)|san pham|mat hang|mon hang|item|product|sp)\s*[:\-=]\s*/;
+  // Nhãn đấu giá đầu dòng (bỏ lặp lại cho tới hết): "[ĐẤU GIÁ] Phiên 3 - ...", "Bid #12 ...".
+  const PRODUCT_PREFIX_PATTERN =
+    /^(?:[^a-z0-9#]+|(?:phien\s+)?(?:dau\s*gia|auction|auc|bidding|bid|dg|thanh ly|pass|sale)(?![a-z])|(?:phien|so|lan|#)\s*\d+(?![\d.,]*\s*(?:k|tr|trieu|cu|m)(?![a-z]))|#[a-z_]+|mo phien(?![a-z]))/;
+  // Dòng chỉ có thông tin phiên, không phải tên món.
+  const PRODUCT_META_LINE_PATTERN =
+    /^(gia|buoc|nhay|ket thuc|end|start|deadline|het|chot|luu y|note|ai|ib|inbox|ship|phi|moi|quy dinh|luat|thoi gian|time|kt|stk|tk|lien he|sdt|zalo|cod|bao hanh|tinh trang|mo ta|size|khoi diem|gkd|min|mua ngay|mua dut|dut|bin|hien tai|cao nhat|bank)(?![a-z])/;
+  // Phần thông tin phiên viết liền sau tên món trên cùng một dòng.
+  const PRODUCT_META_PATTERN =
+    /(?:^|[^a-z])(gia khoi diem|gia khoi dau|khoi diem|gkd|gia start|buoc gia|buoc nhay|buoc|nhay|ket thuc|het gio|end|deadline|start|gia mua ngay|mua ngay|mua dut|dau 0|dau gia tu)(?![a-z])/;
   // Đoạn đầu bài đủ ổn định giữa bản bị cắt "Xem thêm" và bản đầy đủ.
   const TEXT_KEY_LENGTH = 80;
   const FNV_OFFSET_BASIS = 0x811c9dc5;
@@ -219,12 +233,13 @@
     return BUYOUT_COMMENT_PATTERN.test(normalized) && !QUESTION_PATTERN.test(normalized);
   }
 
-  function priceAfter(normalized, pattern) {
+  // allowZero: "Khởi điểm: 0đ" là giá thật (đấu từ 0), không phải thiếu giá.
+  function priceAfter(normalized, pattern, { allowZero = false } = {}) {
     for (const match of normalized.matchAll(pattern)) {
       const rest = normalized.slice(match.index + match[0].length);
       const money = new RegExp(`^${MONEY_PATTERN.source}`).exec(rest);
       const amount = money && amountFromMatch(money);
-      if (amount) return amount;
+      if (amount || (allowZero && amount === 0)) return amount;
     }
     return null;
   }
@@ -370,6 +385,63 @@
     return line ? line.slice(0, TITLE_MAX_LENGTH) : '';
   }
 
+  // Chữ thường không dấu, giữ nguyên độ dài để cắt lại được đúng đoạn trong bản gốc (NFC).
+  function foldSameLength(line) {
+    let folded = '';
+    for (let i = 0; i < line.length; i += 1) {
+      const char = normalize(line[i]);
+      folded += char.length === 1 ? char : char[0] || ' ';
+    }
+    return folded;
+  }
+
+  /**
+   * Tên sản phẩm đem bid. Ưu tiên dòng có nhãn ("Tên SP: ...", "Sản phẩm: ..."); không có thì
+   * lấy dòng đầu tiên còn chữ sau khi bỏ nhãn đấu giá ("Bid", "[ĐẤU GIÁ]", "Phiên 3") và cắt
+   * phần thông tin phiên phía sau ("giá khởi điểm", "bước giá", "end 22h"). Bài nhiều suất
+   * không có dòng tên chung thì nối tên các suất.
+   */
+  function productName(text) {
+    const lines = String(text || '')
+      .normalize('NFC')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    for (const line of lines) {
+      const match = foldSameLength(line).match(PRODUCT_LABEL_PATTERN);
+      if (match) {
+        const value = cleanProduct(line.slice(match[0].length));
+        if (value) return value;
+      }
+    }
+
+    for (const line of lines.slice(0, PRODUCT_SEARCH_LINES)) {
+      if (LOT_LINE_PATTERN.test(normalize(line))) continue;
+      let rest = line;
+      for (;;) {
+        const prefix = foldSameLength(rest).match(PRODUCT_PREFIX_PATTERN);
+        if (!prefix || prefix[0].length === 0) break;
+        rest = rest.slice(prefix[0].length);
+      }
+      if (PRODUCT_META_LINE_PATTERN.test(foldSameLength(rest))) continue;
+      const cut = foldSameLength(rest).search(PRODUCT_META_PATTERN);
+      const value = cleanProduct(cut >= 0 ? rest.slice(0, cut) : rest);
+      if (value) return value;
+    }
+
+    const lotTitles = Object.values(parseLots(text)).filter(Boolean);
+    return lotTitles.length ? cleanProduct(lotTitles.join(', ')) : '';
+  }
+
+  function cleanProduct(value) {
+    const trimmed = value.replace(/^[\s\-–—:=,.|/*•>]+|[\s\-–—:=,.|/*•(]+$/g, '');
+    // Ít nhất hai chữ cái (không dấu) mới là tên: bỏ dòng chỉ có số, giá, emoji.
+    if ((foldSameLength(trimmed).match(/[a-z]/g) || []).length < 2) return '';
+    const name = trimmed.slice(0, PRODUCT_MAX_LENGTH);
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
   // Khoá tạm cho bài chưa lấy được id (link thời gian của Facebook vẫn là "#").
   function textKey(text) {
     const head = normalize(text)
@@ -398,8 +470,9 @@
     const normalized = normalize(text);
     return {
       title: titleOf(text),
+      product: productName(text),
       deadline: parseDeadline(text, reference),
-      startPrice: priceAfter(normalized, START_PRICE_PATTERN),
+      startPrice: priceAfter(normalized, START_PRICE_PATTERN, { allowZero: true }),
       currentPrice: priceAfter(normalized, CURRENT_PRICE_PATTERN),
       buyNowPrice: priceAfter(normalized, BUY_NOW_PATTERN),
       soldOut: POST_SOLD_PATTERN.test(normalized),
@@ -542,7 +615,7 @@
   }
 
   const TEXT_FIELDS = [
-    'title', 'textLength', 'deadlineAt', 'deadlineRaw', 'deadlineApproximate',
+    'title', 'product', 'text', 'textLength', 'deadlineAt', 'deadlineRaw', 'deadlineApproximate',
     'startPrice', 'currentPrice', 'buyNowPrice',
   ];
 
@@ -624,7 +697,7 @@
     if (!record.postId) missing.push('link');
     if (record.boughtOut || record.unavailable) return missing;
     if (!record.deadlineAt) missing.push('deadline');
-    const hasPrice = highestPrice(record) || record.startPrice || hasLotPrice(record);
+    const hasPrice = highestPrice(record) || record.startPrice != null || hasLotPrice(record);
     if (!hasPrice) missing.push('price');
     return missing;
   }
@@ -641,16 +714,19 @@
    * chỉ điền thông tin còn thiếu. Dùng sau khi cập nhật extension để sửa bài cũ không cần mở lại.
    */
   function reparseFromSample(record, sample) {
-    if (!sample || !sample.text) return record;
+    // Tên sản phẩm luôn tính lại bằng bộ đọc hiện tại, từ nội dung đầy đủ nhất đang có.
+    const source = record.text || (sample && sample.text) || '';
+    const product = productName(source) || record.product || productName(record.title);
+    if (!sample || !sample.text) return product === record.product ? record : { ...record, product };
     const parsed = parseAuctionPost(sample.text, record.firstSeenAt || sample.capturedAt);
-    const next = { ...record };
+    const next = { ...record, product };
     if (!next.deadlineAt && parsed.deadline) {
       next.deadlineAt = parsed.deadline.at;
       next.deadlineRaw = parsed.deadline.raw;
       next.deadlineApproximate = parsed.deadline.approximate;
     }
     PRICE_FIELDS.forEach((field) => {
-      if (!next[field] && parsed[field]) next[field] = parsed[field];
+      if (next[field] == null && parsed[field] != null) next[field] = parsed[field];
     });
     if (parsed.soldOut) next.boughtOut = true;
     if ((sample.unreadComments || []).some(isBuyoutComment)) next.boughtOut = true;
@@ -676,6 +752,7 @@
     isBuyoutComment,
     parseDeadline,
     parseAuctionPost,
+    productName,
     highestPrice,
     textKey,
     compareNewest,

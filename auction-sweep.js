@@ -13,7 +13,7 @@
   const SETTINGS_KEYS = ['auctionMaxAgeDays', 'auctionSkipLocked'];
   const DEFAULT_GROUPS = ['316605308060947', '426208205081'];
   const WATCHDOG_ALARM = 'auctionSweepWatchdog';
-  const STEP_TIMEOUT_MIN = { group: 4, post: 2, search: 2 };
+  const STEP_TIMEOUT_MIN = { group: 6, post: 2, search: 2 };
   const SAMPLES_KEY = 'auctionSamples';
   // Bài chưa có id: tối đa chừng này lượt tìm link trong một lượt quét.
   const MAX_SEARCHES_PER_SWEEP = 10;

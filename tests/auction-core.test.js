@@ -421,3 +421,37 @@ test('reparseFromSample never overwrites information already read', () => {
   assert.equal(next.deadlineAt, 123);
   assert.equal(next.startPrice, 999000);
 });
+
+const { productName } = require('../auction-core.js');
+
+test('product names skip auction labels and session info', () => {
+  const cases = {
+    'Bid scan, gậy aba đỏ, book dcd\nS1 gậy\nS2 book': 'Scan, gậy aba đỏ, book dcd',
+    'Bid gậy aba xanh\nAi cần ib\nHết giờ: 10 giờ tối thứ bảy': 'Gậy aba xanh',
+    '🔥[ĐẤU GIÁ] Phiên 12 - Đồng hồ Seiko 5 automatic\nGiá khởi điểm 500k': 'Đồng hồ Seiko 5 automatic',
+    'ĐẤU GIÁ\nGiá khởi điểm: 100k\nBước giá 10k\nÁo khoác Uniqlo size M': 'Áo khoác Uniqlo size M',
+    'Đấu giá máy ảnh Canon AE-1 khởi điểm 1tr bước 50k end 21h': 'Máy ảnh Canon AE-1',
+    'Thanh lý bàn phím cơ Keychron K2 - end 22h 2/11': 'Bàn phím cơ Keychron K2',
+    'Đấu giá cuối tuần\nTên sản phẩm: Tai nghe Sony WH-1000XM4\nKết thúc 21h': 'Tai nghe Sony WH-1000XM4',
+    'Bid #3 nồi cơm Toshiba': 'Nồi cơm Toshiba',
+    '#daugia Dầu gội Tsubaki': 'Dầu gội Tsubaki',
+    'Đấu giá\nS1: gậy đỏ\nS2: gậy xanh\nEnd 22h': 'Gậy đỏ, gậy xanh',
+    'Đấu giá\n500k\nEnd 22h': '',
+  };
+  Object.entries(cases).forEach(([text, expected]) => assert.equal(productName(text), expected, text));
+});
+
+test('re-reading a saved record fills in its product name', () => {
+  const fromText = reparseFromSample({ postId: '1', text: 'Đấu giá\nĐèn bàn Pixar\nEnd 21h' });
+  assert.equal(fromText.product, 'Đèn bàn Pixar');
+  const fromTitle = reparseFromSample({ postId: '2', title: 'Bid tượng gỗ' });
+  assert.equal(fromTitle.product, 'Tượng gỗ');
+});
+
+test('a starting price of 0 is a real price, not missing information', () => {
+  const parsed = parseAuctionPost('Đấu giá\nKhởi điểm: 0đ. Bước giá tối thiểu 20k.\nMua đứt: 400k', Date.now());
+  assert.equal(parsed.startPrice, 0);
+  assert.equal(parsed.buyNowPrice, 400000);
+  assert.deepEqual(missingInfo({ postId: '1', deadlineAt: 1, startPrice: 0 }), []);
+  assert.deepEqual(missingInfo({ postId: '1', deadlineAt: 1, startPrice: null }), ['price']);
+});

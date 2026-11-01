@@ -81,7 +81,7 @@
   }
 
   function formatMoney(value) {
-    return value ? `${moneyFormat.format(value)} ₫` : '';
+    return Number.isFinite(value) ? `${moneyFormat.format(value)} ₫` : '';
   }
 
   function formatCountdown(ms) {
@@ -187,7 +187,7 @@
     } else if (highest) {
       td.textContent = formatMoney(highest);
       td.append(sub(record.bidCount ? `${record.bidCount} lượt trả giá đã thấy` : 'Theo giá ghi trong bài'));
-    } else if (record.startPrice) {
+    } else if (record.startPrice != null) {
       td.textContent = formatMoney(record.startPrice);
       td.append(sub('Giá khởi điểm, chưa thấy ai trả'));
     } else {
@@ -220,13 +220,19 @@
     return td;
   }
 
+  function productCell(record) {
+    const td = cell('product');
+    td.textContent = record.product || '—';
+    return td;
+  }
+
   function renderRow(record, now) {
     const tr = document.createElement('tr');
     if (isEnded(record, now)) tr.className = 'ended';
     else if (record.deadlineAt && record.deadlineAt - now < SOON_MS) tr.className = 'soon';
     const group = cell();
     group.textContent = record.groupName || record.groupKey;
-    tr.append(whenCell(record, now), priceCell(record), postCell(record), group);
+    tr.append(whenCell(record, now), priceCell(record), productCell(record), postCell(record), group);
     return tr;
   }
 
@@ -280,7 +286,7 @@
 
   function exportCsv() {
     const now = Date.now();
-    const header = ['Kết thúc', 'Ước lượng', 'Giá cao nhất', 'Lượt trả giá', 'Giá khởi điểm', 'Mua ngay', 'Bài', 'Người đăng', 'Nhóm', 'Link'];
+    const header = ['Kết thúc', 'Ước lượng', 'Giá cao nhất', 'Lượt trả giá', 'Giá khởi điểm', 'Mua ngay', 'Sản phẩm', 'Bài', 'Người đăng', 'Nhóm', 'Link'];
     const lines = [...records].sort(compareRecords(now)).map((record) =>
       [
         record.deadlineAt ? dateFormat.format(record.deadlineAt) : '',
@@ -291,8 +297,9 @@
               .join('; ')
           : highestPrice(record) || '',
         record.bidCount || 0,
-        record.startPrice || '',
+        record.startPrice ?? '',
         record.buyNowPrice || '',
+        record.product,
         record.title,
         record.authorName,
         record.groupName || record.groupKey,
@@ -361,6 +368,7 @@
           sample.url,
           `Thiếu: ${missingText(byKey[sample.key] || { postId: '' }, sample) || 'không'}`,
           `Số comment đã đọc: ${sample.commentCount}`,
+          ...(sample.picked ? [`Bài chính: ${sample.picked} (${sample.postRoots} khối)`] : []),
           '--- Nội dung bài:',
           sample.text,
           ...(sample.unreadComments.length
@@ -448,8 +456,13 @@
   document.getElementById('exportCsv').addEventListener('click', exportCsv);
 
   document.getElementById('clearData').addEventListener('click', () => {
-    if (!window.confirm('Xóa toàn bộ bài đấu giá đã quét?')) return;
-    chrome.storage.local.remove(STORAGE_KEY);
+    if (!window.confirm('Xóa toàn bộ bài đấu giá đã quét và mẫu nội dung đã lưu?')) return;
+    // Xóa cả mốc lượt quét trước để lần mở danh sách sau quét lại ngay (trừ khi đang quét).
+    chrome.storage.local.get(SWEEP_STATUS_KEY, (stored) => {
+      const status = !chrome.runtime.lastError && stored[SWEEP_STATUS_KEY];
+      const keys = [STORAGE_KEY, SAMPLES_KEY, ...(status && status.running ? [] : [SWEEP_STATUS_KEY])];
+      chrome.storage.local.remove(keys);
+    });
   });
 
   document.getElementById('saveGroups').addEventListener('click', () => {
