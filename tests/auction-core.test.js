@@ -455,3 +455,54 @@ test('a starting price of 0 is a real price, not missing information', () => {
   assert.deepEqual(missingInfo({ postId: '1', deadlineAt: 1, startPrice: 0 }), []);
   assert.deepEqual(missingInfo({ postId: '1', deadlineAt: 1, startPrice: null }), ['price']);
 });
+
+const { applyManual, isFinished, postIdFromLink } = require('../auction-core.js');
+
+test('applyManual overlays typed-in info without touching the scanned fields', () => {
+  const record = {
+    key: 'g:1',
+    deadlineAt: null,
+    highestBid: 900000,
+    lots: { 1: { highestBid: 900000, bidCount: 1 } },
+    product: 'Đọc sai',
+    manual: { deadlineAt: REFERENCE + 1000, price: 500000, startPrice: 0, product: 'Gậy aba', done: true },
+  };
+  const shown = applyManual(record);
+  assert.equal(shown.deadlineAt, REFERENCE + 1000);
+  assert.equal(shown.deadlineApproximate, false);
+  assert.equal(highestPrice(shown), 500000);
+  assert.equal(shown.scannedPrice, 900000);
+  assert.deepEqual(shown.lots, {});
+  assert.equal(shown.startPrice, 0);
+  assert.equal(shown.product, 'Gậy aba');
+  assert.equal(isEnded(shown, REFERENCE), true);
+  assert.equal(record.deadlineAt, null);
+  assert.equal(applyManual({ key: 'g:2' }).key, 'g:2');
+});
+
+test('isFinished: bought out, removed, marked done, or ended after being opened', () => {
+  const ended = REFERENCE - 2 * 60 * 60 * 1000;
+  assert.equal(isFinished({ boughtOut: true }, REFERENCE), true);
+  assert.equal(isFinished({ unavailable: true }, REFERENCE), true);
+  assert.equal(isFinished({ done: true }, REFERENCE), true);
+  assert.equal(isFinished({ deadlineAt: ended, deepScannedAt: ended - 1000 }, REFERENCE), true);
+  assert.equal(isFinished({ deadlineAt: ended }, REFERENCE), false);
+  assert.equal(isFinished({ deadlineAt: REFERENCE - 60 * 1000, deepScannedAt: 1 }, REFERENCE), false);
+  assert.equal(isFinished({ deepScannedAt: 1 }, REFERENCE), false);
+});
+
+test('postIdFromLink reads post ids from pasted Facebook links', () => {
+  assert.equal(postIdFromLink('https://www.facebook.com/groups/123/posts/456789/?comment_id=1'), '456789');
+  assert.equal(postIdFromLink('https://www.facebook.com/groups/abc/permalink/42/'), '42');
+  assert.equal(postIdFromLink('https://m.facebook.com/story.php?story_fbid=777&id=1'), '777');
+  assert.equal(postIdFromLink('https://www.facebook.com/groups/123/posts/pfbid0abc/'), 'pfbid0abc');
+  assert.equal(postIdFromLink('https://www.facebook.com/groups/123/'), '');
+});
+
+test('dedupeRecords keeps typed-in info from either copy', () => {
+  const merged = dedupeRecords({
+    'g:tabc': rec('g:tabc', { manual: { price: 300000 } }),
+    'g:123': rec('g:123', { postId: '123', manual: { product: 'A' } }),
+  });
+  assert.deepEqual(merged['g:123'].manual, { price: 300000, product: 'A' });
+});

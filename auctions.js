@@ -10,6 +10,9 @@
     dedupeRecords,
     missingInfo,
     reparseFromSample,
+    applyManual,
+    parseAmount,
+    postIdFromLink,
   } = globalThis.AuctionCore;
 
   const STORAGE_KEY = 'auctions';
@@ -20,6 +23,7 @@
   const AUTO_SWEEP_KEY = 'auctionsAutoSweep';
   const SWEEP_STATUS_KEY = 'auctionSweepStatus';
   const SAMPLES_KEY = 'auctionSamples';
+  const FINISHED_KEY = 'auctionFinished';
   const MISSING_LABELS = { link: 'link bài', deadline: 'hạn kết thúc', price: 'giá' };
   const SAMPLE_PREVIEW_LIMIT = 1500;
   const MAX_AGE_KEY = 'auctionMaxAgeDays';
@@ -48,7 +52,21 @@
     samplesCount: document.getElementById('samplesCount'),
     samples: document.getElementById('samples'),
     copyStatus: document.getElementById('copyStatus'),
+    editor: document.getElementById('editor'),
+    editorForm: document.getElementById('editorForm'),
+    editorTitle: document.getElementById('editorTitle'),
+    editorLinkField: document.getElementById('editorLinkField'),
+    editorLink: document.getElementById('editorLink'),
+    editorDeadline: document.getElementById('editorDeadline'),
+    editorPrice: document.getElementById('editorPrice'),
+    editorStartPrice: document.getElementById('editorStartPrice'),
+    editorBuyNow: document.getElementById('editorBuyNow'),
+    editorProduct: document.getElementById('editorProduct'),
+    editorDone: document.getElementById('editorDone'),
+    editorError: document.getElementById('editorError'),
   };
+  // Khoá bài đang mở trong hộp nhập tay.
+  let editingKey = null;
   let samples = [];
   let records = [];
   let settings = readSettings({});
@@ -144,17 +162,21 @@
 
   function whenCell(record, now) {
     const td = cell('when');
-    if (record.boughtOut || record.unavailable) {
+    if (record.boughtOut || record.unavailable || record.done) {
       const sold = document.createElement('span');
       sold.className = 'sold';
-      sold.textContent = record.boughtOut ? 'Đã có người mua đứt' : 'Bài đã bị xoá hoặc ẩn';
+      sold.textContent = record.boughtOut
+        ? 'Đã có người mua đứt'
+        : record.unavailable
+          ? 'Bài đã bị xoá hoặc ẩn'
+          : 'Đã đánh dấu xong';
       td.append(sold);
       if (record.deadlineAt) td.append(sub(`Hạn: ${dateFormat.format(record.deadlineAt)}`));
       return td;
     }
     if (!record.deadlineAt) {
       td.textContent = 'Không đọc được hạn';
-      td.append(sub('Mở bài để xem'));
+      td.append(sub('Mở bài để xem, hoặc bấm Nhập tay'));
       return td;
     }
     td.textContent = `${record.deadlineApproximate ? '≈ ' : ''}${dateFormat.format(record.deadlineAt)}`;
@@ -184,6 +206,11 @@
     const highest = highestPrice(record);
     if (lotEntries(record).length > 0 && !record.boughtOut) {
       lotsPriceCell(td, record);
+    } else if (record.manual && record.manual.price) {
+      td.textContent = formatMoney(highest);
+      td.append(sub('Nhập tay'));
+      // Quét được giá cao hơn giá nhập tay: có thể đã có người trả thêm.
+      if (record.scannedPrice > highest) td.append(sub(`Quét thấy: ${formatMoney(record.scannedPrice)}`));
     } else if (highest) {
       td.textContent = formatMoney(highest);
       td.append(sub(record.bidCount ? `${record.bidCount} lượt trả giá đã thấy` : 'Theo giá ghi trong bài'));
@@ -232,8 +259,29 @@
     else if (record.deadlineAt && record.deadlineAt - now < SOON_MS) tr.className = 'soon';
     const group = cell();
     group.textContent = record.groupName || record.groupKey;
-    tr.append(whenCell(record, now), priceCell(record), productCell(record), postCell(record), group);
+    tr.append(whenCell(record, now), priceCell(record), productCell(record), postCell(record), group, editCell(record));
     return tr;
+  }
+
+  function editButton(record, className) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    if (className) button.className = className;
+    // Còn thiếu thông tin thì nhắc nhập tay; đã nhập rồi thì cho sửa.
+    button.textContent = record.manual ? 'Sửa nhập tay' : 'Nhập tay';
+    if (!record.manual && missingInfo(record).length > 0) button.classList.add('primary');
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      openEditor(record.key);
+    });
+    return button;
+  }
+
+  function editCell(record) {
+    const td = cell('edit');
+    td.append(editButton(record));
+    if (record.manual) td.append(sub('Có thông tin nhập tay'));
+    return td;
   }
 
   function render() {
@@ -333,16 +381,29 @@
         const missing = document.createElement('span');
         missing.className = 'missing';
         missing.textContent = ` — thiếu: ${missingText(record, sample) || 'không'}`;
-        summary.append(missing);
-
+        // Link nằm ngay trên dòng tóm tắt để mở bài mà không cần bung ra.
         const link = document.createElement('a');
+        link.className = 'sample-link';
         link.href = sample.url;
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
         link.textContent = 'Mở bài';
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'sample-delete danger';
+        remove.textContent = 'Xóa';
+        remove.addEventListener('click', (event) => {
+          // Không để cú bấm bung/thu gọn bài.
+          event.preventDefault();
+          deleteSample(sample.key);
+        });
+        summary.append(missing, link);
+        if (record.key) summary.append(editButton(record, 'sample-edit'));
+        summary.append(remove);
+
         const content = document.createElement('pre');
         content.textContent = sample.text.slice(0, SAMPLE_PREVIEW_LIMIT) || '(không đọc được nội dung bài)';
-        details.append(summary, link, content);
+        details.append(summary, content);
 
         if (sample.unreadComments.length) {
           details.append(sub('Comment có số chưa đọc được thành giá:'));
@@ -379,14 +440,15 @@
       .join('\n\n');
   }
 
-  // Bản ghi hiển thị = bản đã lưu, gộp trùng, rồi đọc lại mẫu nội dung bằng bộ đọc hiện tại.
+  // Bản ghi hiển thị = bản đã lưu, gộp trùng, đọc lại mẫu nội dung bằng bộ đọc hiện tại,
+  // rồi phủ thông tin nhập tay.
   function loadRecords() {
     chrome.storage.local.get([STORAGE_KEY, SAMPLES_KEY], (stored) => {
       if (chrome.runtime.lastError) return;
       const saved = stored[SAMPLES_KEY] || {};
       const byKey = dedupeRecords(stored[STORAGE_KEY] || {});
       Object.keys(byKey).forEach((key) => {
-        byKey[key] = reparseFromSample(byKey[key], saved[key]);
+        byKey[key] = applyManual(reparseFromSample(byKey[key], saved[key]));
       });
       records = Object.values(byKey);
       samples = Object.values(saved).sort((a, b) => b.capturedAt - a.capturedAt);
@@ -402,6 +464,154 @@
     } catch (_error) {
       nodes.copyStatus.textContent = 'Không copy được, hãy mở từng bài và copy tay.';
     }
+  });
+
+  function deleteSample(key) {
+    chrome.storage.local.get(SAMPLES_KEY, (stored) => {
+      if (chrome.runtime.lastError) return;
+      const saved = { ...(stored[SAMPLES_KEY] || {}) };
+      delete saved[key];
+      chrome.storage.local.set({ [SAMPLES_KEY]: saved });
+    });
+  }
+
+  function pad(value) {
+    return String(value).padStart(2, '0');
+  }
+
+  // Giá trị cho ô datetime-local (giờ máy).
+  function toLocalInput(ms) {
+    if (!ms) return '';
+    const date = new Date(ms);
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function moneyInput(value) {
+    return value == null ? '' : moneyFormat.format(value);
+  }
+
+  // Ô trống = dùng thông tin quét được; ô có chữ mà không đọc được thành giá thì báo lỗi.
+  function readMoney(input, label, errors) {
+    const text = input.value.trim();
+    if (!text) return null;
+    const amount = parseAmount(text);
+    if (amount === null) errors.push(`Không hiểu ${label}: "${text}"`);
+    return amount;
+  }
+
+  function openEditor(key) {
+    const record = records.find((item) => item.key === key);
+    if (!record) return;
+    const manual = record.manual || {};
+    editingKey = key;
+    nodes.editorTitle.textContent = record.title || record.url;
+    nodes.editorLinkField.hidden = Boolean(record.postId);
+    nodes.editorLink.value = '';
+    nodes.editorDeadline.value = toLocalInput(manual.deadlineAt);
+    // Gợi ý thông tin quét được để người dùng biết ô trống sẽ dùng gì.
+    nodes.editorDeadline.title = record.deadlineAt && !manual.deadlineAt ? `Quét được: ${dateFormat.format(record.deadlineAt)}` : '';
+    nodes.editorPrice.value = moneyInput(manual.price);
+    nodes.editorPrice.placeholder = highestPrice(record) && !manual.price ? `Quét được: ${formatMoney(highestPrice(record))}` : 'vd: 250k, 1tr2';
+    nodes.editorStartPrice.value = moneyInput(manual.startPrice);
+    nodes.editorBuyNow.value = moneyInput(manual.buyNowPrice);
+    nodes.editorProduct.value = manual.product || '';
+    nodes.editorProduct.placeholder = record.product || '';
+    nodes.editorDone.checked = Boolean(manual.done);
+    nodes.editorError.textContent = '';
+    nodes.editor.showModal();
+  }
+
+  function closeEditor() {
+    editingKey = null;
+    nodes.editor.close();
+  }
+
+  function readEditor() {
+    const errors = [];
+    const manual = {};
+    const deadline = nodes.editorDeadline.value ? new Date(nodes.editorDeadline.value).getTime() : null;
+    if (Number.isFinite(deadline)) manual.deadlineAt = deadline;
+    const price = readMoney(nodes.editorPrice, 'giá cao nhất', errors);
+    if (price) manual.price = price;
+    const startPrice = readMoney(nodes.editorStartPrice, 'giá khởi điểm', errors);
+    if (startPrice !== null) manual.startPrice = startPrice;
+    const buyNow = readMoney(nodes.editorBuyNow, 'giá mua ngay', errors);
+    if (buyNow) manual.buyNowPrice = buyNow;
+    const product = nodes.editorProduct.value.trim();
+    if (product) manual.product = product;
+    if (nodes.editorDone.checked) manual.done = true;
+
+    let postId = '';
+    const link = nodes.editorLinkField.hidden ? '' : nodes.editorLink.value.trim();
+    if (link) {
+      postId = postIdFromLink(link);
+      if (!postId) errors.push('Link không có id bài (cần dạng …/posts/123… hoặc …/permalink/123…)');
+    }
+    return { errors, manual, postId };
+  }
+
+  /**
+   * Ghi thông tin nhập tay vào bản ghi (trường manual). Có link thì chuyển bản ghi sang khoá
+   * theo id bài, như khi quét đọc được link. Bài đánh dấu xong được ghi vào danh sách đã xong
+   * để lượt quét sau bỏ qua; bỏ đánh dấu thì gỡ ra.
+   */
+  function saveManual(key, manual, postId) {
+    chrome.storage.local.get([STORAGE_KEY, SAMPLES_KEY, FINISHED_KEY], (stored) => {
+      if (chrome.runtime.lastError) return;
+      // Gộp trùng như lúc hiển thị để khoá đang sửa khớp với bản ghi đã lưu.
+      const all = dedupeRecords(stored[STORAGE_KEY] || {});
+      const samples = { ...(stored[SAMPLES_KEY] || {}) };
+      const finished = { ...(stored[FINISHED_KEY] || {}) };
+      const record = all[key];
+      if (!record) return;
+
+      const hasManual = Object.keys(manual).length > 0;
+      let nextKey = key;
+      let next = { ...record, updatedAt: Date.now() };
+      if (postId) {
+        nextKey = `${record.groupKey}:${postId}`;
+        delete all[key];
+        next = {
+          ...(all[nextKey] || next),
+          key: nextKey,
+          postId,
+          url: `https://www.facebook.com/groups/${record.groupKey}/posts/${postId}/`,
+        };
+        if (samples[key]) {
+          samples[nextKey] = { ...samples[key], key: nextKey, url: next.url };
+          delete samples[key];
+        }
+      }
+      if (hasManual) next.manual = manual;
+      else delete next.manual;
+      all[nextKey] = next;
+      if (manual.done) finished[nextKey] = Date.now();
+      else {
+        delete finished[key];
+        delete finished[nextKey];
+      }
+      chrome.storage.local.set({ [STORAGE_KEY]: all, [SAMPLES_KEY]: samples, [FINISHED_KEY]: finished });
+    });
+  }
+
+  nodes.editorForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!editingKey) return;
+    const { errors, manual, postId } = readEditor();
+    if (errors.length > 0) {
+      nodes.editorError.textContent = errors.join('. ');
+      return;
+    }
+    saveManual(editingKey, manual, postId);
+    closeEditor();
+  });
+  document.getElementById('editorReset').addEventListener('click', () => {
+    if (editingKey) saveManual(editingKey, {}, '');
+    closeEditor();
+  });
+  document.getElementById('editorCancel').addEventListener('click', closeEditor);
+  nodes.editor.addEventListener('close', () => {
+    editingKey = null;
   });
 
   document.getElementById('clearSamples').addEventListener('click', () => {
@@ -456,11 +666,11 @@
   document.getElementById('exportCsv').addEventListener('click', exportCsv);
 
   document.getElementById('clearData').addEventListener('click', () => {
-    if (!window.confirm('Xóa toàn bộ bài đấu giá đã quét và mẫu nội dung đã lưu?')) return;
+    if (!window.confirm('Xóa toàn bộ bài đấu giá đã quét, mẫu nội dung và danh sách bài đã xong?')) return;
     // Xóa cả mốc lượt quét trước để lần mở danh sách sau quét lại ngay (trừ khi đang quét).
     chrome.storage.local.get(SWEEP_STATUS_KEY, (stored) => {
       const status = !chrome.runtime.lastError && stored[SWEEP_STATUS_KEY];
-      const keys = [STORAGE_KEY, SAMPLES_KEY, ...(status && status.running ? [] : [SWEEP_STATUS_KEY])];
+      const keys = [STORAGE_KEY, SAMPLES_KEY, FINISHED_KEY, ...(status && status.running ? [] : [SWEEP_STATUS_KEY])];
       chrome.storage.local.remove(keys);
     });
   });

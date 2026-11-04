@@ -599,8 +599,55 @@
   // Bài bị bỏ qua theo cài đặt: khoá bình luận, hoặc đăng quá số ngày tối đa.
   // Đã kết thúc: có người mua đứt, bài đã bị xoá/ẩn, hoặc đã qua hạn.
   function isEnded(record, now) {
-    if (record.boughtOut || record.unavailable) return true;
+    if (record.boughtOut || record.unavailable || record.done) return true;
     return Boolean(record.deadlineAt) && record.deadlineAt <= now;
+  }
+
+  // Sau hạn chừng này mới coi là xong hẳn (hạn đọc được có thể lệch vài phút).
+  const FINISHED_GRACE_MS = 30 * MINUTE_MS;
+
+  /**
+   * Bài đã xong, không cần mở lại ở các lượt quét sau: có người mua đứt, bị xoá/ẩn, được
+   * đánh dấu xong bằng tay, hoặc đã qua hạn và đã từng được mở qua link để đọc.
+   */
+  function isFinished(record, now) {
+    if (record.boughtOut || record.unavailable || record.done) return true;
+    return Boolean(record.deadlineAt && record.deepScannedAt) && record.deadlineAt < now - FINISHED_GRACE_MS;
+  }
+
+  /**
+   * Phủ thông tin nhập tay (record.manual) lên thông tin quét được. Không ghi đè vào bản ghi
+   * để lần quét sau vẫn cập nhật phần còn lại; giá quét được giữ ở scannedPrice để so.
+   * manual: { deadlineAt, price, startPrice, buyNowPrice, product, done }
+   */
+  function applyManual(record) {
+    const manual = record.manual;
+    if (!manual) return record;
+    const next = { ...record };
+    if (manual.product) next.product = manual.product;
+    if (manual.deadlineAt) {
+      next.deadlineAt = manual.deadlineAt;
+      next.deadlineApproximate = false;
+      next.deadlineRaw = 'Nhập tay';
+    }
+    if (manual.price) {
+      next.scannedPrice = highestPrice(record);
+      next.highestBid = manual.price;
+      next.currentPrice = null;
+      next.lots = {};
+    }
+    if (manual.startPrice != null) next.startPrice = manual.startPrice;
+    if (manual.buyNowPrice) next.buyNowPrice = manual.buyNowPrice;
+    if (manual.done) next.done = true;
+    return next;
+  }
+
+  // Id bài trong link Facebook dán vào: /posts/<id>, /permalink/<id>, ?story_fbid=<id>.
+  function postIdFromLink(text) {
+    const match = String(text || '').match(
+      /\/(?:posts|permalink)\/(\d+|pfbid\w+)|[?&](?:story_fbid|multi_permalinks)=(\d+|pfbid\w+)/
+    );
+    return match ? match[1] || match[2] : '';
   }
 
   function isNumericPostId(record) {
@@ -645,6 +692,7 @@
       postedAt: keep.postedAt || drop.postedAt || null,
       boughtOut: Boolean(keep.boughtOut || drop.boughtOut),
       lots: mergeLots(drop.lots, keep.lots),
+      ...(keep.manual || drop.manual ? { manual: { ...drop.manual, ...keep.manual } } : {}),
     };
   }
 
@@ -695,7 +743,7 @@
   function missingInfo(record) {
     const missing = [];
     if (!record.postId) missing.push('link');
-    if (record.boughtOut || record.unavailable) return missing;
+    if (record.boughtOut || record.unavailable || record.done) return missing;
     if (!record.deadlineAt) missing.push('deadline');
     const hasPrice = highestPrice(record) || record.startPrice != null || hasLotPrice(record);
     if (!hasPrice) missing.push('price');
@@ -760,6 +808,9 @@
     isOlderThan,
     isExcluded,
     isEnded,
+    isFinished,
+    applyManual,
+    postIdFromLink,
     dedupeRecords,
     missingInfo,
     unreadComments,

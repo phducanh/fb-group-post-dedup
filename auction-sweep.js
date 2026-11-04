@@ -15,6 +15,11 @@
   const WATCHDOG_ALARM = 'auctionSweepWatchdog';
   const STEP_TIMEOUT_MIN = { group: 6, post: 2, search: 2 };
   const SAMPLES_KEY = 'auctionSamples';
+  // Bài đã xong (hết hạn và đã đọc, mua đứt, bị xoá, đánh dấu xong): { khoá: lúc xong }.
+  // Giữ lâu hơn danh sách bài để quét nhóm gặp lại bài cũ cũng không đọc lại.
+  const FINISHED_KEY = 'auctionFinished';
+  const FINISHED_KEEP_MS = 90 * 24 * 60 * 60 * 1000;
+  const MAX_FINISHED = 5000;
   // Bài chưa có id: tối đa chừng này lượt tìm link trong một lượt quét.
   const MAX_SEARCHES_PER_SWEEP = 10;
   const MAX_POSTS_PER_SWEEP = 40;
@@ -59,10 +64,10 @@
   }
 
   // Bài đang diễn ra (hoặc chưa đọc được hạn): đọc lại nếu lần đọc kỹ gần nhất đã cũ.
-  // Bài đã kết thúc: chỉ đọc thêm một lần sau hạn để lấy giá chốt.
+  // Bài đã kết thúc: chỉ đọc nếu chưa từng mở qua link lần nào.
   function needsDeepScan(record, now) {
     const deep = record.deepScannedAt || 0;
-    if (record.deadlineAt && record.deadlineAt < now - ENDED_GRACE_MS) return deep < record.deadlineAt;
+    if (record.deadlineAt && record.deadlineAt < now - ENDED_GRACE_MS) return !deep;
     return deep < now - FRESH_MS;
   }
 
@@ -75,17 +80,36 @@
   // Bài không cần mở: chưa có id (chỉ có link tìm kiếm), đã có người mua đứt, đã bị xoá, hoặc bị bỏ qua
   // theo cài đặt (khoá bình luận, đăng quá số ngày tối đa).
   function isWorthOpening(record, groups, settings, now, records) {
-    if (!record.postId || record.boughtOut || record.unavailable || !groups.includes(record.groupKey)) return false;
+    if (!record.postId || !groups.includes(record.groupKey)) return false;
+    if (root.AuctionCore.isFinished(record, now)) return false;
     return !root.AuctionCore.isExcluded(record, settings, now, records) && needsDeepScan(record, now);
   }
 
+  // Ghi thêm các bài vừa xong vào danh sách đã xong, bỏ mục quá cũ. Bài được bỏ đánh dấu
+  // xong bằng tay đã được trang danh sách gỡ khỏi đây.
+  async function rememberFinished(records, now) {
+    const stored = (await chrome.storage.local.get(FINISHED_KEY))[FINISHED_KEY] || {};
+    const finished = { ...stored };
+    records.forEach((record) => {
+      if (!finished[record.key] && root.AuctionCore.isFinished(record, now)) finished[record.key] = now;
+    });
+    const kept = Object.entries(finished)
+      .filter(([, at]) => at >= now - FINISHED_KEEP_MS)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, MAX_FINISHED);
+    const next = Object.fromEntries(kept);
+    if (JSON.stringify(next) !== JSON.stringify(stored)) await chrome.storage.local.set({ [FINISHED_KEY]: next });
+    return next;
+  }
+
   // Đọc danh sách, gộp các bản ghi trùng của cùng một bài, và đọc lại mẫu nội dung đã lưu
-  // của bài còn thiếu thông tin bằng bộ đọc hiện tại (ghi lại nếu có thay đổi).
+  // của bài còn thiếu thông tin bằng bộ đọc hiện tại (ghi lại nếu có thay đổi). Bản trả về
+  // đã phủ thông tin nhập tay (không ghi phần phủ xuống).
   async function readRecords() {
     const stored = await chrome.storage.local.get([AUCTIONS_KEY, SAMPLES_KEY]);
     const records = stored[AUCTIONS_KEY] || {};
     const samples = stored[SAMPLES_KEY] || {};
-    const { dedupeRecords, reparseFromSample } = root.AuctionCore;
+    const { dedupeRecords, reparseFromSample, applyManual } = root.AuctionCore;
     const updated = Object.fromEntries(
       Object.entries(records).map(([key, record]) => [key, reparseFromSample(record, samples[key])])
     );
@@ -93,7 +117,13 @@
     if (JSON.stringify(deduped) !== JSON.stringify(records)) {
       await chrome.storage.local.set({ [AUCTIONS_KEY]: deduped });
     }
-    return deduped;
+    const view = Object.values(deduped).map(applyManual);
+    await rememberFinished(view, Date.now());
+    return Object.fromEntries(view.map((record) => [record.key, record]));
+  }
+
+  async function readFinished() {
+    return (await chrome.storage.local.get(FINISHED_KEY))[FINISHED_KEY] || {};
   }
 
   // Bài chưa có id (chỉ có link tìm kiếm trong nhóm): mở trang tìm kiếm để lấy link thật.
@@ -105,7 +135,7 @@
         (record) =>
           !record.postId &&
           groups.includes(record.groupKey) &&
-          !record.boughtOut &&
+          !root.AuctionCore.isFinished(record, now) &&
           !root.AuctionCore.isExcluded(record, settings, now, records)
       )
       .slice(0, MAX_SEARCHES_PER_SWEEP)
@@ -117,8 +147,12 @@
   async function postSteps(groups, now, kind, skipKeys = []) {
     const settings = root.AuctionCore.readSettings(await chrome.storage.sync.get(SETTINGS_KEYS));
     const records = Object.values(await readRecords());
+    const finished = await readFinished();
     return records
-      .filter((record) => !skipKeys.includes(record.key) && isWorthOpening(record, groups, settings, now, records))
+      .filter(
+        (record) =>
+          !skipKeys.includes(record.key) && !finished[record.key] && isWorthOpening(record, groups, settings, now, records)
+      )
       .sort((a, b) => {
         const [rankA, keyA] = priority(a, now);
         const [rankB, keyB] = priority(b, now);
@@ -135,14 +169,24 @@
       }));
   }
 
-  // Bước quét nhóm mang theo id các bài đã có để auction.js bỏ qua và biết lúc thôi cuộn.
+  // Bước quét nhóm mang theo id các bài đã có (kể cả bài đã xong mà đã bị xoá khỏi danh
+  // sách) để auction.js bỏ qua và biết lúc thôi cuộn.
   async function groupSteps(groups) {
     const records = Object.values(await readRecords());
+    const finishedKeys = Object.keys(await readFinished());
     return groups.map((group) => ({
       ...groupStep(group),
-      knownIds: records
-        .filter((record) => record.groupKey === group && /^\d+$/.test(record.postId || ''))
-        .map((record) => record.postId),
+      knownIds: [
+        ...new Set([
+          ...records
+            .filter((record) => record.groupKey === group && /^\d+$/.test(record.postId || ''))
+            .map((record) => record.postId),
+          ...finishedKeys
+            .filter((key) => key.startsWith(`${group}:`))
+            .map((key) => key.slice(group.length + 1))
+            .filter((postId) => /^\d+$/.test(postId)),
+        ]),
+      ],
     }));
   }
 

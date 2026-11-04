@@ -91,6 +91,7 @@
               <th scope="col">Sản phẩm</th>
               <th scope="col">Bài</th>
               <th scope="col">Nhóm</th>
+              <th scope="col"><span class="visually-hidden">Nhập tay</span></th>
             </tr>
           </thead>
           <tbody id="rows"></tbody>
@@ -98,6 +99,51 @@
         <p id="empty" class="empty" hidden>Chưa có bài đấu giá nào. Mở một nhóm theo dõi để bắt đầu quét.</p>
       </div>
     </main>
+
+    <dialog id="editor" class="editor">
+      <form id="editorForm" method="dialog">
+        <h2>Nhập tay thông tin bài</h2>
+        <p id="editorTitle" class="muted"></p>
+        <p class="muted">
+          Ô để trống thì dùng thông tin quét được. Thông tin nhập tay được giữ qua các lần quét sau.
+        </p>
+        <label class="field" id="editorLinkField">
+          <span>Link bài (dán link từ Facebook)</span>
+          <input type="url" id="editorLink" placeholder="https://www.facebook.com/groups/…/posts/…" />
+        </label>
+        <label class="field">
+          <span>Hạn kết thúc</span>
+          <input type="datetime-local" id="editorDeadline" />
+        </label>
+        <label class="field">
+          <span>Giá cao nhất hiện tại</span>
+          <input type="text" id="editorPrice" placeholder="vd: 250k, 1tr2" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Giá khởi điểm</span>
+          <input type="text" id="editorStartPrice" placeholder="vd: 0, 100k" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Giá mua ngay / đứt</span>
+          <input type="text" id="editorBuyNow" placeholder="vd: 2tr" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Sản phẩm</span>
+          <input type="text" id="editorProduct" autocomplete="off" />
+        </label>
+        <label class="row">
+          <input type="checkbox" id="editorDone" />
+          <span>Phiên đã xong (không quét lại bài này nữa)</span>
+        </label>
+        <p id="editorError" class="error" aria-live="polite"></p>
+        <div class="actions">
+          <button type="submit" id="editorSave" value="save" class="primary">Lưu</button>
+          <button type="button" id="editorReset" class="danger">Bỏ nhập tay</button>
+          <button type="button" id="editorCancel">Huỷ</button>
+        </div>
+      </form>
+    </dialog>
+
     <script src="auction-core.js"></script>
     <script src="auctions.js"></script>
   </body>

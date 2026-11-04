@@ -175,6 +175,18 @@ input[type='number'] {
   font-weight: 600;
 }
 
+.sample-link {
+  margin-left: 8px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.sample-delete {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-weight: 400;
+}
+
 .samples pre {
   overflow-x: auto;
   max-height: 260px;
@@ -294,6 +306,78 @@ td a {
 
 td a:hover {
   text-decoration: underline;
+}
+
+td.edit {
+  white-space: nowrap;
+}
+
+td.edit button,
+.sample-edit {
+  padding: 2px 8px;
+}
+
+.sample-edit {
+  margin-left: 8px;
+  font-weight: 400;
+}
+
+.manual {
+  color: var(--color-accent);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.editor {
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.editor::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+
+.editor form {
+  display: grid;
+  gap: 10px;
+}
+
+.editor input[type='text'],
+.editor input[type='url'],
+.editor input[type='datetime-local'] {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.editor .field[hidden] {
+  display: none;
+}
+
+.error {
+  margin: 0;
+  color: var(--color-danger);
+}
+
+.error:empty {
+  display: none;
 }
 
 .empty {

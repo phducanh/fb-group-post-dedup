@@ -336,3 +336,40 @@ test('the watchdog alarm skips a stuck step', async () => {
 
   assert.match(env.state.updated.at(-1)[1].url, new RegExp(`/groups/${GROUP_B}/`));
 });
+
+test('finished posts are remembered and never reopened, even after leaving the list', async () => {
+  const env = loadBackground();
+  const now = Date.now();
+  const ended = now - 2 * 60 * 60 * 1000;
+  env.state.local.auctions = byKey(
+    auction('1', { deadlineAt: ended, deepScannedAt: ended - 60 * 1000 }),
+    auction('2', { deadlineAt: ended }),
+    auction('3', { manual: { done: true } }),
+    auction('4', { deadlineAt: null, manual: { deadlineAt: ended } , deepScannedAt: ended - 1 })
+  );
+  env.state.local.auctionFinished = { [`${GROUP_A}:99`]: now - 1000 };
+  await env.send({ type: 'startAuctionSweep' });
+
+  // Chỉ bài đã hết hạn mà chưa từng mở qua link được mở (một lần).
+  assert.equal(env.state.windows[0].url, auction('2').url);
+  assert.deepEqual(Object.keys(plain(env.state.local.auctionFinished)).sort(), [
+    `${GROUP_A}:1`,
+    `${GROUP_A}:3`,
+    `${GROUP_A}:4`,
+    `${GROUP_A}:99`,
+  ]);
+  await pageLoaded(env);
+  env.state.local.auctions[auction('2').key].deepScannedAt = Date.now();
+  await stepDone(env);
+  assert.match(env.state.updated.at(-1)[1].url, new RegExp(`/groups/${GROUP_A}/`));
+  await pageLoaded(env);
+  // Bài đã xong mà không còn trong danh sách vẫn được báo là đã biết khi quét nhóm.
+  assert.ok(plain(env.state.sent.at(-1)[1]).knownIds.includes('99'));
+  await stepDone(env);
+  await pageLoaded(env);
+  await stepDone(env);
+
+  // Bài hết hạn vừa được đọc giờ cũng đã xong; không bài nào phải mở thêm.
+  assert.equal(env.state.local.auctionSweepStatus.result, 'done');
+  assert.ok(env.state.local.auctionFinished[`${GROUP_A}:2`] > 0);
+});

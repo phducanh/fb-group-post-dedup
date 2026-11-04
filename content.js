@@ -57,6 +57,7 @@
   let persistTimer = null;
   // Chỉ quét sau khi đã nạp xong bài đã nhớ, để không phân loại thiếu dữ liệu.
   let isReady = false;
+  let onDetailPage = false;
 
   function parseUrl(anchor) {
     try {
@@ -275,9 +276,7 @@
 
   // Bài này có nằm cao hơn (mới hơn) bản đang hiện của originalIdentity không? Bản không
   // còn element (đã nhớ từ lần trước, hoặc đã bị gỡ khỏi trang) luôn được coi là cũ hơn.
-  // Trên trang chi tiết thì không so được thứ tự: bài trùng luôn bị thu gọn.
   function isNewerThanShown(article, originalIdentity) {
-    if (isPostDetailPage()) return false;
     const shown = shownRoots.get(originalIdentity);
     if (!shown || !shown.isConnected) return true;
     return Boolean(shown.compareDocumentPosition(article) & Node.DOCUMENT_POSITION_PRECEDING);
@@ -381,6 +380,14 @@
   function scan() {
     scanFrame = null;
     if (!settings.enabled || !isReady) return;
+    // Người dùng chủ động mở bài thì không ẩn gì. Facebook chuyển trang không tải lại,
+    // nên khi vào/ra trang chi tiết thì trả hết bài về rồi lọc lại từ đầu.
+    const detail = isPostDetailPage();
+    if (detail !== onDetailPage) {
+      onDetailPage = detail;
+      return resetAndRescan();
+    }
+    if (detail) return;
     topLevelArticles().forEach((root) => {
       if (isVirtualized(root)) {
         verified.delete(root);

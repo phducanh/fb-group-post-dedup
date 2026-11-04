@@ -84,6 +84,7 @@
   const ENDED_STOP_MS = DAY_MS;
   // Mẫu nội dung của bài chưa đọc được hết thông tin (xem ở trang danh sách, gửi để sửa bộ đọc).
   const SAMPLES_KEY = 'auctionSamples';
+  const FINISHED_KEY = 'auctionFinished';
   const MAX_SAMPLES = 50;
   const SAMPLE_TEXT_LIMIT = 3000;
   // Bước tìm link cho bài chưa có id: trang tìm kiếm trong nhóm chỉ cần cuộn vài lần.
@@ -120,6 +121,7 @@
   let panel = null;
   let autoScrollDone = null;
   let sweeping = false;
+  let finishedKeys = new Set();
 
   function isComment(article) {
     return isCommentLabel(article.getAttribute('aria-label'));
@@ -406,6 +408,8 @@
     const boughtOut = commentTexts.some(isBuyoutComment);
     const tempKey = `${group}:t${textKey(text)}`;
     const key = postId ? `${group}:${postId}` : tempKey;
+    // Bài đã xong (auction-sweep.js ghi nhớ): không đọc lại, kể cả khi đã bị xoá khỏi danh sách.
+    if (finishedKeys.has(key)) return true;
     if (postId) {
       seenThisPage.delete(tempKey);
       pending.delete(tempKey);
@@ -914,7 +918,14 @@
     applyGroups(stored[GROUPS_KEY]);
   });
 
+  chrome.storage.local.get(FINISHED_KEY, (stored) => {
+    if (!chrome.runtime.lastError) finishedKeys = new Set(Object.keys(stored[FINISHED_KEY] || {}));
+  });
+
   chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes[FINISHED_KEY]) {
+      finishedKeys = new Set(Object.keys(changes[FINISHED_KEY].newValue || {}));
+    }
     if (area !== 'sync') return;
     if (SETTINGS_KEYS.some((key) => changes[key])) {
       chrome.storage.sync.get(SETTINGS_KEYS, (stored) => {
