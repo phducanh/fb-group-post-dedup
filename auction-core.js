@@ -663,7 +663,7 @@
 
   const TEXT_FIELDS = [
     'title', 'product', 'text', 'textLength', 'deadlineAt', 'deadlineRaw', 'deadlineApproximate',
-    'startPrice', 'currentPrice', 'buyNowPrice',
+    'startPrice', 'currentPrice', 'buyNowPrice', 'truncated',
   ];
 
   function maxOrNull(...values) {
@@ -737,13 +737,14 @@
   }
 
   /**
-   * Thông tin còn thiếu của một bài: 'link' (chưa có id bài), 'deadline' (chưa đọc được hạn),
-   * 'price' (không có giá nào). Bài đã có người mua đứt hoặc đã bị xoá thì không cần hạn/giá.
+   * Thông tin còn thiếu của một bài: 'link' (chưa có id bài), 'content' (mới đọc được phần đầu,
+   * còn "Xem thêm"), 'deadline' (chưa đọc được hạn), 'price' (không có giá nào). Bài đã có người mua đứt hoặc đã bị xoá thì không cần hạn/giá.
    */
   function missingInfo(record) {
     const missing = [];
     if (!record.postId) missing.push('link');
     if (record.boughtOut || record.unavailable || record.done) return missing;
+    if (record.truncated) missing.push('content');
     if (!record.deadlineAt) missing.push('deadline');
     const hasPrice = highestPrice(record) || record.startPrice != null || hasLotPrice(record);
     if (!hasPrice) missing.push('price');
@@ -763,8 +764,9 @@
    */
   function reparseFromSample(record, sample) {
     // Tên sản phẩm luôn tính lại bằng bộ đọc hiện tại, từ nội dung đầy đủ nhất đang có.
+    // Bài mới đọc được phần đầu thì phần đó thường là nội quy, không đoán tên món từ đó.
     const source = record.text || (sample && sample.text) || '';
-    const product = productName(source) || record.product || productName(record.title);
+    const product = record.truncated ? record.product : productName(source) || record.product || productName(record.title);
     if (!sample || !sample.text) return product === record.product ? record : { ...record, product };
     const parsed = parseAuctionPost(sample.text, record.firstSeenAt || sample.capturedAt);
     const next = { ...record, product };

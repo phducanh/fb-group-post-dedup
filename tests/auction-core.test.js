@@ -506,3 +506,20 @@ test('dedupeRecords keeps typed-in info from either copy', () => {
   });
   assert.deepEqual(merged['g:123'].manual, { price: 300000, product: 'A' });
 });
+
+test('a post read only up to "Xem thêm" is flagged and keeps its product name unguessed', () => {
+  assert.deepEqual(missingInfo({ postId: '1', truncated: true, deadlineAt: 1, startPrice: 0 }), ['content']);
+  assert.deepEqual(missingInfo({ postId: '1', truncated: true, boughtOut: true }), []);
+  const draft = reparseFromSample({ postId: '1', truncated: true, text: 'Đấu giá nè (ĐÃ ĐƯỢC AD CẤP PHÉP).' });
+  assert.equal(draft.product, undefined);
+});
+
+test('dedupeRecords prefers the full copy over the truncated one', () => {
+  const merged = dedupeRecords({
+    'g:tabc': rec('g:tabc', { text: 'x', textLength: 480, truncated: true, product: null, deadlineAt: null }),
+    'g:123': rec('g:123', { postId: '123', text: 'x'.repeat(900), textLength: 900, truncated: false, product: 'Dx gao tiger', deadlineAt: 5 }),
+  });
+  assert.equal(merged['g:123'].truncated, false);
+  assert.equal(merged['g:123'].product, 'Dx gao tiger');
+  assert.equal(merged['g:123'].deadlineAt, 5);
+});

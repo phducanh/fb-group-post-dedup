@@ -406,6 +406,8 @@
     const bids = lotBids.map((bid) => bid.amount);
     const lots = lotsFromBids(lotBids);
     const boughtOut = commentTexts.some(isBuyoutComment);
+    // Còn nút "Xem thêm" nghĩa là chỉ mới đọc được phần đầu bài.
+    const truncated = seeMoreButtons(post).length > 0;
     const tempKey = `${group}:t${textKey(text)}`;
     const key = postId ? `${group}:${postId}` : tempKey;
     // Bài đã xong (auction-sweep.js ghi nhớ): không đọc lại, kể cả khi đã bị xoá khỏi danh sách.
@@ -416,11 +418,12 @@
     }
     if (settings.skipLockedComments && locked) seenThisPage.delete(key);
     else seenThisPage.add(key);
-    const signature = `${text.length}|${bids.length}|${Math.max(0, ...bids)}|${Boolean(postedAt)}|${locked}|${boughtOut}|${JSON.stringify(lots)}`;
+    const signature = `${text.length}|${bids.length}|${Math.max(0, ...bids)}|${Boolean(postedAt)}|${locked}|${boughtOut}|${truncated}|${JSON.stringify(lots)}`;
     if (lastQueued.get(key) === signature) return true;
     lastQueued.set(key, signature);
 
     const previous = pending.get(key) || {};
+    const isLongest = text.length >= (previous.text || '').length;
     pending.set(key, {
       key,
       groupKey: group,
@@ -429,7 +432,8 @@
       textKey: textKey(text),
       url: postId ? `https://www.facebook.com/groups/${group}/posts/${postId}/` : searchUrl(group, text),
       authorName: authorName(post) || previous.authorName || '',
-      text: text.length >= (previous.text || '').length ? text : previous.text,
+      text: isLongest ? text : previous.text,
+      truncated: isLongest ? truncated : Boolean(previous.truncated),
       highestBid: Math.max(previous.highestBid || 0, ...bids, 0) || null,
       bidCount: Math.max(previous.bidCount || 0, bids.length),
       postedAt: postedAt || previous.postedAt || null,
@@ -468,7 +472,9 @@
       const parsed = parseAuctionPost(next.text, firstSeenAt);
       Object.assign(merged, {
         title: parsed.title,
-        product: parsed.product,
+        // Phần đầu bị cắt thường chỉ là nội quy: để trống tên món thay vì ghi sai.
+        product: next.truncated ? null : parsed.product,
+        truncated: Boolean(next.truncated),
         // Giữ nội dung bài để đọc lại (tên sản phẩm, ...) khi bộ đọc được cập nhật.
         text: next.text.slice(0, RECORD_TEXT_LIMIT),
         textLength: next.text.length,
@@ -569,6 +575,9 @@
     missingLinkCount = 0;
     const cutoff = Date.now() - settings.maxAgeDays * DAY_MS;
     let run = 0;
+    // Bấm "Xem thêm" / rê chuột làm bài đổi chiều cao: ngoài lúc quét hay mở riêng một bài,
+    // làm vậy trên bảng tin sẽ khiến trang nhảy khi người dùng đang lướt.
+    const canInteract = sweeping || isPermalinkPage() || Boolean(postDialog());
     posts.forEach((post) => {
       // Bài đăng quá số ngày tối đa: không đọc, chỉ đếm để biết lúc thôi cuộn.
       const postedAt = postTime(post);
@@ -587,8 +596,10 @@
         }
         run = 0;
       }
-      expandPost(post);
-      if (!postId) nudgeTimestampLinks(post);
+      if (canInteract) {
+        expandPost(post);
+        if (!postId) nudgeTimestampLinks(post);
+      }
       const locked = commentsLocked(post, post === mainPost);
       const queued = queueRecord(group, postId, post, comments.get(post) || [], { postedAt, locked });
       if (queued && !postId) missingLinkCount += 1;

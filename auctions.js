@@ -24,7 +24,7 @@
   const SWEEP_STATUS_KEY = 'auctionSweepStatus';
   const SAMPLES_KEY = 'auctionSamples';
   const FINISHED_KEY = 'auctionFinished';
-  const MISSING_LABELS = { link: 'link bài', deadline: 'hạn kết thúc', price: 'giá' };
+  const MISSING_LABELS = { link: 'link bài', content: 'chưa đọc đủ bài (Xem thêm)', deadline: 'hạn kết thúc', price: 'giá' };
   const SAMPLE_PREVIEW_LIMIT = 1500;
   const MAX_AGE_KEY = 'auctionMaxAgeDays';
   const SKIP_LOCKED_KEY = 'auctionSkipLocked';
@@ -650,7 +650,7 @@
     render();
   });
 
-  nodes.autoSweep.checked = readFlag(AUTO_SWEEP_KEY, true);
+  nodes.autoSweep.checked = readFlag(AUTO_SWEEP_KEY, false);
   nodes.autoSweep.addEventListener('change', () => writeFlag(AUTO_SWEEP_KEY, nodes.autoSweep.checked));
   nodes.sweepNow.addEventListener('click', () => startSweep(true));
   nodes.sweepStop.addEventListener('click', () => {
