@@ -252,6 +252,12 @@
   }
 
   function productCell(record) {
+    const td = productNameCell(record);
+    if (record.condition) td.append(sub(`Tình trạng: ${record.condition}`));
+    return td;
+  }
+
+  function productNameCell(record) {
     const td = cell('product');
     if (record.product) {
       td.textContent = record.product;
@@ -356,7 +362,7 @@
 
   function exportCsv() {
     const now = Date.now();
-    const header = ['Kết thúc', 'Ước lượng', 'Giá cao nhất', 'Lượt trả giá', 'Giá khởi điểm', 'Mua ngay', 'Sản phẩm', 'Bài', 'Người đăng', 'Nhóm', 'Link'];
+    const header = ['Kết thúc', 'Ước lượng', 'Giá cao nhất', 'Lượt trả giá', 'Giá khởi điểm', 'Mua ngay', 'Sản phẩm', 'Tình trạng', 'Bài', 'Người đăng', 'Nhóm', 'Link'];
     const lines = [...records].sort(compareRecords(now)).map((record) =>
       [
         record.deadlineAt ? dateFormat.format(record.deadlineAt) : '',
@@ -370,6 +376,7 @@
         record.startPrice ?? '',
         record.buyNowPrice || '',
         record.product,
+        record.condition,
         record.title,
         record.authorName,
         record.groupName || record.groupKey,

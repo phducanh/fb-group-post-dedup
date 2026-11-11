@@ -43,6 +43,11 @@
   // Phần thông tin phiên viết liền sau tên món trên cùng một dòng.
   const PRODUCT_META_PATTERN =
     /(?:^|[^a-z])(gia khoi diem|gia khoi dau|khoi diem|gkd|gia start|buoc gia|buoc nhay|buoc|nhay|ket thuc|het gio|end|deadline|start|gia mua ngay|mua ngay|mua dut|dau 0|dau gia tu)(?![a-z])/;
+  // Tình trạng hàng: dòng có nhãn ("Tình trạng: mới 99%"), không có thì tìm cách ghi quen thuộc.
+  const CONDITION_MAX_LENGTH = 80;
+  const CONDITION_LABEL_PATTERN = /^[^a-z0-9]*(tinh trang|tt|do moi|condition)\s*[:\-=]\s*/;
+  const CONDITION_WORDING_PATTERN =
+    /(?:^|[^a-z0-9])((?:new|moi)\s*\d{2,3}\s*%|like\s*new|likenew|new\s*seal|nguyen\s*seal|sealed|da qua su dung|hang cu|second\s*hand)(?![a-z])/;
   // Đoạn đầu bài đủ ổn định giữa bản bị cắt "Xem thêm" và bản đầy đủ.
   const TEXT_KEY_LENGTH = 80;
   const FNV_OFFSET_BASIS = 0x811c9dc5;
@@ -434,6 +439,35 @@
     return lotTitles.length ? cleanProduct(lotTitles.join(', ')) : '';
   }
 
+  function cleanCondition(value) {
+    const trimmed = value.replace(/^[\s\-–—:=,.|/*•>]+|[\s\-–—:=,.|/*•(]+$/g, '').slice(0, CONDITION_MAX_LENGTH);
+    return trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : '';
+  }
+
+  /** Tình trạng hàng (mới/cũ, % mới, ...) ghi trong bài; '' nếu bài không nói. */
+  function conditionOf(text) {
+    const lines = String(text || '')
+      .normalize('NFC')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    for (const line of lines) {
+      const match = foldSameLength(line).match(CONDITION_LABEL_PATTERN);
+      if (match) {
+        const value = cleanCondition(line.slice(match[0].length));
+        if (value) return value;
+      }
+    }
+    for (const line of lines) {
+      const match = foldSameLength(line).match(CONDITION_WORDING_PATTERN);
+      if (match) {
+        const start = match.index + match[0].length - match[1].length;
+        return cleanCondition(line.slice(start, start + match[1].length));
+      }
+    }
+    return '';
+  }
+
   function cleanProduct(value) {
     const trimmed = value.replace(/^[\s\-–—:=,.|/*•>]+|[\s\-–—:=,.|/*•(]+$/g, '');
     // Ít nhất hai chữ cái (không dấu) mới là tên: bỏ dòng chỉ có số, giá, emoji.
@@ -471,6 +505,7 @@
     return {
       title: titleOf(text),
       product: productName(text),
+      condition: conditionOf(text),
       deadline: parseDeadline(text, reference),
       startPrice: priceAfter(normalized, START_PRICE_PATTERN, { allowZero: true }),
       currentPrice: priceAfter(normalized, CURRENT_PRICE_PATTERN),
@@ -662,7 +697,7 @@
   }
 
   const TEXT_FIELDS = [
-    'title', 'product', 'text', 'textLength', 'deadlineAt', 'deadlineRaw', 'deadlineApproximate',
+    'title', 'product', 'condition', 'text', 'textLength', 'deadlineAt', 'deadlineRaw', 'deadlineApproximate',
     'startPrice', 'currentPrice', 'buyNowPrice', 'truncated',
   ];
 
@@ -767,9 +802,14 @@
     // Bài mới đọc được phần đầu thì phần đó thường là nội quy, không đoán tên món từ đó.
     const source = record.text || (sample && sample.text) || '';
     const product = record.truncated ? record.product : productName(source) || record.product || productName(record.title);
-    if (!sample || !sample.text) return product === record.product ? record : { ...record, product };
+    const condition = record.condition || conditionOf(source);
+    const base = { ...record, product, ...(condition ? { condition } : {}) };
+    if (!sample || !sample.text) {
+      return product === record.product && condition === record.condition ? record : base;
+    }
     const parsed = parseAuctionPost(sample.text, record.firstSeenAt || sample.capturedAt);
-    const next = { ...record, product };
+    const next = base;
+    if (!next.condition && parsed.condition) next.condition = parsed.condition;
     if (!next.deadlineAt && parsed.deadline) {
       next.deadlineAt = parsed.deadline.at;
       next.deadlineRaw = parsed.deadline.raw;
@@ -803,6 +843,7 @@
     parseDeadline,
     parseAuctionPost,
     productName,
+    conditionOf,
     highestPrice,
     textKey,
     compareNewest,

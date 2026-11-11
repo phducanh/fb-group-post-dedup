@@ -474,6 +474,8 @@
         title: parsed.title,
         // Phần đầu bị cắt thường chỉ là nội quy: để trống tên món thay vì ghi sai.
         product: next.truncated ? null : parsed.product,
+        // Tình trạng hàng đọc được từ phần đầu vẫn đáng tin dù bài bị cắt.
+        condition: parsed.condition,
         truncated: Boolean(next.truncated),
         // Giữ nội dung bài để đọc lại (tên sản phẩm, ...) khi bộ đọc được cập nhật.
         text: next.text.slice(0, RECORD_TEXT_LIMIT),

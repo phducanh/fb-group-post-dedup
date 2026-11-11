@@ -523,3 +523,27 @@ test('dedupeRecords prefers the full copy over the truncated one', () => {
   assert.equal(merged['g:123'].product, 'Dx gao tiger');
   assert.equal(merged['g:123'].deadlineAt, 5);
 });
+
+const { conditionOf } = require('../auction-core.js');
+
+test('condition is read from the labelled line or from common wording', () => {
+  const cases = {
+    'Bid đèn bàn\nTình trạng: mới 99%, đủ hộp\nEnd 21h': 'Mới 99%, đủ hộp',
+    'Bid đèn bàn\nTT: like new\nEnd 21h': 'Like new',
+    'Đấu giá áo khoác Uniqlo size M, new 100% tag đầy đủ, khởi điểm 100k': 'New 100%',
+    'Đấu giá loa JBL đã qua sử dụng, còn tốt\nEnd 21h': 'Đã qua sử dụng',
+    'Đấu giá\nGiá khởi điểm: 100k\nEnd 22h': '',
+  };
+  Object.entries(cases).forEach(([text, expected]) => assert.equal(conditionOf(text), expected, text));
+});
+
+test('parseAuctionPost and reparseFromSample carry the condition', () => {
+  const text = 'Đấu giá\nĐèn bàn Pixar\nTình trạng: mới 95%\nEnd 21h';
+  assert.equal(parseAuctionPost(text, REFERENCE).condition, 'Mới 95%');
+  assert.equal(reparseFromSample({ postId: '1', text }).condition, 'Mới 95%');
+});
+
+test('a truncated record still shows the condition found in the visible part', () => {
+  const draft = reparseFromSample({ postId: '1', truncated: true, text: 'Đấu giá\nTình trạng: cũ, trầy nhẹ' });
+  assert.equal(draft.condition, 'Cũ, trầy nhẹ');
+});
