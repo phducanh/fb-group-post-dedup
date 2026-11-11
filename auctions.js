@@ -286,13 +286,18 @@
     return td;
   }
 
+  // Các ô thông tin dùng chung cho bảng chính và bảng bài chưa đọc hết: kết thúc, giá, sản phẩm, bài, nhóm.
+  function infoCells(record, now) {
+    const group = cell();
+    group.textContent = record.groupName || record.groupKey;
+    return [whenCell(record, now), priceCell(record), productCell(record), postCell(record), group];
+  }
+
   function renderRow(record, now) {
     const tr = document.createElement('tr');
     if (isEnded(record, now)) tr.className = 'ended';
     else if (record.deadlineAt && record.deadlineAt - now < SOON_MS) tr.className = 'soon';
-    const group = cell();
-    group.textContent = record.groupName || record.groupKey;
-    tr.append(whenCell(record, now), priceCell(record), productCell(record), postCell(record), group, editCell(record));
+    tr.append(...infoCells(record, now), editCell(record));
     return tr;
   }
 
@@ -420,60 +425,55 @@
     return lines;
   }
 
+  // Bài chưa có bản ghi (chưa lưu được) vẫn dựng được hàng từ nội dung đã lưu.
+  function sampleRecord(sample, byKey) {
+    if (byKey[sample.key]) return byKey[sample.key];
+    const draft = { key: sample.key, postId: '', url: sample.url, title: sample.title, text: sample.text };
+    return reparseFromSample(draft, sample);
+  }
+
+  // Ô riêng cho những gì chưa phân tích được: mục còn thiếu, comment có số chưa hiểu, nội dung gốc để đối chiếu.
+  function unreadCell(record, sample) {
+    const td = cell('unread');
+    const missing = missingInfo(record).map((item) => MISSING_LABELS[item]);
+    if (missing.length === 0 && sample.unreadComments.length === 0) td.textContent = 'Không thiếu gì';
+    missing.forEach((label) => td.append(sub(`Thiếu: ${label}`)));
+    if (sample.unreadComments.length) {
+      td.append(sub(`${sample.unreadComments.length} comment chưa đọc được thành giá:`));
+      sample.unreadComments.forEach((comment) => td.append(sub(`- ${comment}`)));
+    }
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Nội dung đã đọc';
+    const content = document.createElement('pre');
+    content.textContent = sample.text.slice(0, SAMPLE_PREVIEW_LIMIT) || '(không đọc được nội dung bài)';
+    details.append(summary, content);
+    td.append(details);
+    return td;
+  }
+
+  function sampleActionsCell(record, sample) {
+    const td = cell('edit');
+    if (record.key) td.append(editButton(record));
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'sample-delete danger';
+    remove.textContent = 'Xóa';
+    remove.addEventListener('click', () => deleteSample(sample.key));
+    td.append(remove);
+    return td;
+  }
+
   function renderSamples(byKey) {
+    const now = Date.now();
     nodes.samplesSection.hidden = samples.length === 0;
     nodes.samplesCount.textContent = String(samples.length);
     nodes.samples.replaceChildren(
       ...samples.map((sample) => {
-        const record = byKey[sample.key] || { postId: '' };
-        const details = document.createElement('details');
-        const summary = document.createElement('summary');
-        summary.textContent = sample.title || sample.url;
-        const missing = document.createElement('span');
-        missing.className = 'missing';
-        missing.textContent = ` — thiếu: ${missingText(record, sample) || 'không'}`;
-        // Link nằm ngay trên dòng tóm tắt để mở bài mà không cần bung ra.
-        const link = document.createElement('a');
-        link.className = 'sample-link';
-        link.href = sample.url;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        link.textContent = 'Mở bài';
-        const remove = document.createElement('button');
-        remove.type = 'button';
-        remove.className = 'sample-delete danger';
-        remove.textContent = 'Xóa';
-        remove.addEventListener('click', (event) => {
-          // Không để cú bấm bung/thu gọn bài.
-          event.preventDefault();
-          deleteSample(sample.key);
-        });
-        summary.append(missing, link);
-        if (record.key) summary.append(editButton(record, 'sample-edit'));
-        summary.append(remove);
-        const facts = sampleFacts(record, sample);
-        if (facts.length) {
-          const list = document.createElement('div');
-          list.className = 'sample-facts';
-          facts.forEach((line) => list.append(sub(line)));
-          summary.append(list);
-        }
-
-        const content = document.createElement('pre');
-        content.textContent = sample.text.slice(0, SAMPLE_PREVIEW_LIMIT) || '(không đọc được nội dung bài)';
-        details.append(summary, content);
-
-        if (sample.unreadComments.length) {
-          details.append(sub('Comment có số chưa đọc được thành giá:'));
-          const list = document.createElement('ul');
-          sample.unreadComments.forEach((comment) => {
-            const item = document.createElement('li');
-            item.textContent = comment;
-            list.append(item);
-          });
-          details.append(list);
-        }
-        return details;
+        const record = sampleRecord(sample, byKey);
+        const tr = document.createElement('tr');
+        tr.append(...infoCells(record, now), unreadCell(record, sample), sampleActionsCell(record, sample));
+        return tr;
       })
     );
   }

@@ -159,62 +159,36 @@ input[type='number'] {
   font-weight: 600;
 }
 
-.samples {
-  display: grid;
-  gap: 8px;
+td.unread {
+  min-width: 200px;
+  max-width: 320px;
 }
 
-.samples details {
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--color-bg);
+td.unread details {
+  margin-top: 6px;
 }
 
-.samples summary {
+td.unread summary {
   cursor: pointer;
-  font-weight: 600;
-}
-
-.sample-facts {
-  margin-top: 4px;
-}
-
-.sample-facts .sub {
-  overflow: visible;
-  font-weight: 400;
-}
-
-.sample-link {
-  margin-left: 8px;
-  font-weight: 400;
-  white-space: nowrap;
+  color: var(--color-muted);
+  font-size: 12px;
 }
 
 .sample-delete {
-  margin-left: 8px;
+  margin-left: 6px;
   padding: 2px 8px;
   font-weight: 400;
 }
 
-.samples pre {
+td.unread pre {
   overflow-x: auto;
   max-height: 260px;
-  margin: 8px 0;
+  margin: 6px 0 0;
   padding: 8px;
   border-radius: 6px;
-  background: var(--color-surface);
+  background: var(--color-bg);
   font: 12px/1.45 ui-monospace, monospace;
   white-space: pre-wrap;
-}
-
-.samples ul {
-  margin: 4px 0 0;
-  padding-left: 18px;
-}
-
-.missing {
-  color: var(--color-soon);
-  font-weight: 400;
 }
 
 .group-links {
@@ -325,14 +299,8 @@ td.edit {
   white-space: nowrap;
 }
 
-td.edit button,
-.sample-edit {
+td.edit button {
   padding: 2px 8px;
-}
-
-.sample-edit {
-  margin-left: 8px;
-  font-weight: 400;
 }
 
 .manual {

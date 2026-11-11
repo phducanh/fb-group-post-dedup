@@ -624,3 +624,20 @@ test('scrapedFacts prefers the stored record over a fresh read and skips what is
   assert.equal(facts.deadlineAt, null);
   assert.deepEqual(facts.conditions, []);
 });
+
+const RULES_HEAD = [
+  'Đấu giá nè (ĐÃ ĐƯỢC AD CẤP PHÉP).',
+  'VUI LÒNG ĐỌC KĨ LUẬT VÀ MÔ TẢ SẢN PHẨM, VI PHẠM SẼ BỊ XỬ PHẠT VÀ KICK KHÔNG THƯƠNG TIẾC NÈ',
+  '(Nhà em cam kết KHÔNG ĐÔN GIÁ. ACE may mắn trúng được thì do ACE.',
+  'Nhà em cũng cam kết giao hàng đúng hẹn và hỗ trợ khách hàng khi có thắc mắc và sự cố.',
+  '* Chỉ chốt đơn theo comment đấu giá ở phần comment, không chốt trong tin nhắn.',
+].join('\n');
+
+test('a post that opens with rules and greetings does not take them as the product name', () => {
+  assert.equal(productName(RULES_HEAD), '');
+  const draft = scrapedFacts({ postId: '1', truncated: true }, RULES_HEAD, REFERENCE);
+  assert.equal(draft.product, '');
+  const full = `${RULES_HEAD}\nTên sản phẩm: gao Shark\nTình trạng: Hàng Nhật có bảo hành hư gãy do vận chuyển.\nKhởi điểm: 0đ. Bước giá tối thiểu 50k.`;
+  assert.equal(productName(full), 'Gao Shark');
+  assert.equal(productName('Đấu giá nè\nBàn phím cơ Keychron K2\nEnd 22h'), 'Bàn phím cơ Keychron K2');
+});

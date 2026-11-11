@@ -36,10 +36,10 @@
     /^[^a-z0-9]*(ten (san pham|sp|mon|hang)|san pham|mat hang|mon hang|item|product|sp)\s*[:\-=]\s*/;
   // Nhãn đấu giá đầu dòng (bỏ lặp lại cho tới hết): "[ĐẤU GIÁ] Phiên 3 - ...", "Bid #12 ...".
   const PRODUCT_PREFIX_PATTERN =
-    /^(?:[^a-z0-9#]+|(?:phien\s+)?(?:dau\s*gia|auction|auc|bidding|bid|dg|thanh ly|pass|sale)(?![a-z])|(?:phien|so|lan|#)\s*\d+(?![\d.,]*\s*(?:k|tr|trieu|cu|m)(?![a-z]))|#[a-z_]+|mo phien(?![a-z]))/;
+    /^(?:[^a-z0-9#]+|(?:phien\s+)?(?:dau\s*gia|auction|auc|bidding|bid|dg|thanh ly|pass|sale)(?![a-z])|(?:phien|so|lan|#)\s*\d+(?![\d.,]*\s*(?:k|tr|trieu|cu|m)(?![a-z]))|#[a-z_]+|mo phien(?![a-z])|(?:ne|nhe)(?![a-z]))/;
   // Dòng chỉ có thông tin phiên, không phải tên món.
   const PRODUCT_META_LINE_PATTERN =
-    /^(gia|buoc|nhay|ket thuc|end|start|deadline|het|chot|luu y|note|ai|ib|inbox|ship|phi|moi|quy dinh|luat|thoi gian|time|kt|stk|tk|lien he|sdt|zalo|cod|bao hanh|tinh trang|mo ta|size|khoi diem|gkd|min|mua ngay|mua dut|dut|bin|hien tai|cao nhat|bank)(?![a-z])/;
+    /^(chi chot|chot don|chu y|vui long|doc ki|nha em|cam ket|cam on|da duoc ad|ad cap phep|gia|buoc|nhay|ket thuc|end|start|deadline|het|chot|luu y|note|ai|ib|inbox|ship|phi|moi|quy dinh|luat|thoi gian|time|kt|stk|tk|lien he|sdt|zalo|cod|bao hanh|tinh trang|mo ta|size|khoi diem|gkd|min|mua ngay|mua dut|dut|bin|hien tai|cao nhat|bank)(?![a-z])/;
   // Phần thông tin phiên viết liền sau tên món trên cùng một dòng.
   const PRODUCT_META_PATTERN =
     /(?:^|[^a-z])(gia khoi diem|gia khoi dau|khoi diem|gkd|gia start|buoc gia|buoc nhay|buoc|nhay|ket thuc|het gio|end|deadline|start|gia mua ngay|mua ngay|mua dut|dau 0|dau gia tu)(?![a-z])/;
