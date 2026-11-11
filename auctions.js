@@ -9,6 +9,7 @@
     readSettings,
     dedupeRecords,
     missingInfo,
+    productName,
     reparseFromSample,
     applyManual,
     parseAmount,
@@ -26,6 +27,7 @@
   const FINISHED_KEY = 'auctionFinished';
   const MISSING_LABELS = { link: 'link bài', content: 'chưa đọc đủ bài (Xem thêm)', deadline: 'hạn kết thúc', price: 'giá' };
   const SAMPLE_PREVIEW_LIMIT = 1500;
+  const EXCERPT_LIMIT = 160;
   const MAX_AGE_KEY = 'auctionMaxAgeDays';
   const SKIP_LOCKED_KEY = 'auctionSkipLocked';
   const SOON_MS = 3 * 60 * 60 * 1000;
@@ -176,7 +178,9 @@
     }
     if (!record.deadlineAt) {
       td.textContent = 'Không đọc được hạn';
-      td.append(sub('Mở bài để xem, hoặc bấm Nhập tay'));
+      td.append(
+        sub(record.truncated ? 'Mới đọc được phần đầu bài (Xem thêm), hạn có thể nằm ở phần sau' : 'Mở bài để xem, hoặc bấm Nhập tay')
+      );
       return td;
     }
     td.textContent = `${record.deadlineApproximate ? '≈ ' : ''}${dateFormat.format(record.deadlineAt)}`;
@@ -249,7 +253,25 @@
 
   function productCell(record) {
     const td = cell('product');
-    td.textContent = record.product || '—';
+    if (record.product) {
+      td.textContent = record.product;
+      return td;
+    }
+    if (!record.truncated) {
+      td.textContent = '—';
+      return td;
+    }
+    // Bài mới đọc được phần đầu: vẫn liệt kê những gì đọc được, đánh dấu là tạm để không nhầm với tên chắc chắn.
+    const guess = productName(record.text || '');
+    if (guess) {
+      td.textContent = guess;
+      td.classList.add('provisional');
+      td.append(sub('Tạm đoán từ phần đầu bài, có thể chưa đúng'));
+    } else {
+      td.textContent = '—';
+    }
+    const excerpt = String(record.text || '').replace(/\s+/g, ' ').trim();
+    if (excerpt) td.append(sub(`Đọc được: ${excerpt.slice(0, EXCERPT_LIMIT)}${excerpt.length > EXCERPT_LIMIT ? '…' : ''}`));
     return td;
   }
 
