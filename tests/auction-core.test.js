@@ -558,6 +558,18 @@ test('the standard disclaimer after the condition is dropped and the preliminary
   assert.deepEqual(conditionsOf('Tình trạng sơ bộ: trầy nhẹ'), ['Trầy nhẹ']);
 });
 
+test('auction rules listed after the condition are not read as condition', () => {
+  const rules =
+    'Sau khi hết giờ có tối đa 5p59s tỉa. Mn được tỉa vô hạn đến khi không ai đấu trong 5p59s tỉa (nghĩa là các cmt phải cách nhau từ 1 - 5p, cách nhau 6p trở lên sẽ chốt cho người trước).';
+  const asBullets = ['Tình trạng sơ bộ (có thể thiếu hoặc sai):', '- Xác như Ảnh', '- Khởi điểm: 300K', `- ${rules}`].join('\n');
+  assert.deepEqual(conditionsOf(asBullets), ['Xác như Ảnh']);
+  const sameLine = ['Tình trạng: hàng nhật', `- ${rules}`, '- Bước giá 50k'].join('\n');
+  assert.deepEqual(conditionsOf(sameLine), ['Hàng nhật']);
+  assert.deepEqual(conditionsOf(`Tình trạng: hàng nhật ${rules}`), ['Hàng nhật']);
+  assert.deepEqual(conditionsOf(`Tình trạng sơ bộ:\n- Xác như Ảnh\n${rules}`), ['Xác như Ảnh']);
+  assert.deepEqual(conditionsOf('Tình trạng sơ bộ:\n- Móp nhẹ\n- Ship toàn quốc'), ['Móp nhẹ']);
+});
+
 test('a wording that is already part of a labelled condition is not listed twice', () => {
   assert.deepEqual(conditionsOf('Tình trạng: like new fullbox\nHàng like new nhé'), ['Like new fullbox']);
   assert.deepEqual(conditionsOf('Máy mới 99%, tặng kèm sạc, hàng cũ trầy nhẹ'), ['Mới 99%', 'Hàng cũ']);

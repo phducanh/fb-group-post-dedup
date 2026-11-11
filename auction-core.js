@@ -50,7 +50,7 @@
   const CONDITION_BULLET_PATTERN = /^[-–—•*+]\s*/;
   // Câu miễn trách nhiệm ghi sau tình trạng ở mọi bài của nhóm: không phải tình trạng của món.
   const CONDITION_BOILERPLATE_PATTERN =
-    /(?:co bao hanh hu|hu gay do van chuyen|do dac nhu hinh|tinh trang so bo|\(co the thieu)/;
+    /(?:co bao hanh hu|hu gay do van chuyen|do dac nhu hinh|tinh trang so bo|\(co the thieu|sau khi het gio|toi da \d+\s*p|(?<![a-z])tia(?![a-z]))/;
   const CONDITION_WORDING_PATTERN =
     /(?:^|[^a-z0-9])((?:new|moi)\s*\d{2,3}\s*%|like\s*new|likenew|new\s*seal|nguyen\s*seal|sealed|da qua su dung|hang cu|second\s*hand)(?![a-z])/;
   // Đoạn đầu bài đủ ổn định giữa bản bị cắt "Xem thêm" và bản đầy đủ.
@@ -451,6 +451,12 @@
     return trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : '';
   }
 
+  // Độ dài phần tình trạng ở đầu chuỗi (không dấu, chữ thường): dừng trước thông tin phiên / câu mẫu / luật đấu.
+  function conditionEnd(folded) {
+    const cuts = [folded.search(PRODUCT_META_PATTERN), folded.search(CONDITION_BOILERPLATE_PATTERN)].filter((at) => at >= 0);
+    return cuts.length ? Math.min(...cuts) : folded.length;
+  }
+
   // Giá trị sau nhãn "Tình trạng" dừng trước phần thông tin phiên viết liền sau ("bước giá", "end 21h").
   function labelledConditions(line) {
     const folded = foldSameLength(line);
@@ -459,9 +465,7 @@
     let match = pattern.exec(folded);
     while (match) {
       const start = match.index + match[0].length;
-      const rest = folded.slice(start);
-      const cuts = [rest.search(PRODUCT_META_PATTERN), rest.search(CONDITION_BOILERPLATE_PATTERN)].filter((at) => at >= 0);
-      const value = cleanCondition(line.slice(start, cuts.length ? start + Math.min(...cuts) : undefined));
+      const value = cleanCondition(line.slice(start, start + conditionEnd(folded.slice(start))));
       if (value) found.push({ value, folded: foldSameLength(value) });
       match = pattern.exec(folded);
     }
@@ -474,12 +478,17 @@
     const match = CONDITION_PRELIMINARY_PATTERN.exec(folded);
     if (!match) return [];
     const toEntry = (value) => ({ value, folded: foldSameLength(value) });
-    const sameLine = cleanCondition(lines[index].slice(match.index + match[0].length));
+    const tail = match.index + match[0].length;
+    const sameLine = cleanCondition(lines[index].slice(tail, tail + conditionEnd(folded.slice(tail))));
     if (sameLine) return [toEntry(sameLine)];
     const bullets = [];
     for (let next = index + 1; next < lines.length && CONDITION_BULLET_PATTERN.test(lines[next]); next += 1) {
-      const value = cleanCondition(lines[next].replace(CONDITION_BULLET_PATTERN, ''));
-      if (value) bullets.push(toEntry(value));
+      const bullet = lines[next].replace(CONDITION_BULLET_PATTERN, '');
+      // Gạch đầu dòng đã sang thông tin phiên hoặc luật đấu thì danh sách tình trạng đã hết.
+      if (PRODUCT_META_LINE_PATTERN.test(foldSameLength(bullet))) break;
+      const value = cleanCondition(bullet.slice(0, conditionEnd(foldSameLength(bullet))));
+      if (!value) break;
+      bullets.push(toEntry(value));
     }
     return bullets;
   }
