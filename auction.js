@@ -54,7 +54,7 @@
   const MAX_RECORDS = 500;
   const RECORD_TEXT_LIMIT = 1500;
   const KEEP_AFTER_DEADLINE_MS = 7 * 24 * 60 * 60 * 1000;
-  const KEEP_UNDATED_MS = 14 * 24 * 60 * 60 * 1000;
+  const KEEP_UNDATED_MS = 4 * 24 * 60 * 60 * 1000;
   // Quét tự động (auction-sweep.js mở tab này và gửi từng bước).
   const SWEEP_PAGE_WAIT_MS = 20000;
   const SWEEP_SCROLL_STEPS = 100;

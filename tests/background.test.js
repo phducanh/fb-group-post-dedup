@@ -373,3 +373,58 @@ test('finished posts are remembered and never reopened, even after leaving the l
   assert.equal(env.state.local.auctionSweepStatus.result, 'done');
   assert.ok(env.state.local.auctionFinished[`${GROUP_A}:2`] > 0);
 });
+
+const HOUR = 60 * 60 * 1000;
+
+test('a post whose deadline could not be read is not reopened every sweep', async () => {
+  const env = loadBackground();
+  const now = Date.now();
+  env.state.local.auctions = byKey(auction('1', { deadlineAt: null, deepScannedAt: now - 20 * 60 * 1000 }));
+  await env.send({ type: 'startAuctionSweep' });
+
+  assert.match(env.state.windows[0].url, new RegExp(`/groups/${GROUP_A}/\\?sorting`));
+});
+
+test('a post without a readable deadline is checked again after the back-off', async () => {
+  const env = loadBackground();
+  env.state.local.auctions = byKey(auction('1', { deadlineAt: null, deepScannedAt: Date.now() - 7 * HOUR }));
+  await env.send({ type: 'startAuctionSweep' });
+
+  assert.equal(env.state.windows[0].url, auction('1').url);
+});
+
+test('a post with a hand-entered past deadline is not reopened', async () => {
+  const env = loadBackground();
+  const now = Date.now();
+  env.state.local.auctions = byKey(
+    auction('1', { deadlineAt: null, deepScannedAt: now - 2 * HOUR, manual: { deadlineAt: now - HOUR } })
+  );
+  await env.send({ type: 'startAuctionSweep' });
+
+  assert.match(env.state.windows[0].url, new RegExp(`/groups/${GROUP_A}/\\?sorting`));
+});
+
+test('a post whose link was already searched without success is not searched again right away', async () => {
+  const env = loadBackground();
+  const searchUrl = `https://www.facebook.com/groups/${GROUP_A}/search/?q=abc`;
+  env.state.local.auctions = byKey({
+    ...auction('', { textKey: 'abc', searchedAt: Date.now() - 20 * 60 * 1000 }),
+    key: `${GROUP_A}:tabc`,
+    url: searchUrl,
+  });
+  await env.send({ type: 'startAuctionSweep' });
+
+  assert.match(env.state.windows[0].url, new RegExp(`/groups/${GROUP_A}/\\?sorting`));
+});
+
+test('finishing a search step stamps the record so it is not searched again soon', async () => {
+  const env = loadBackground();
+  const searchUrl = `https://www.facebook.com/groups/${GROUP_A}/search/?q=abc`;
+  const key = `${GROUP_A}:tabc`;
+  env.state.local.auctions = byKey({ ...auction('', { textKey: 'abc' }), key, url: searchUrl });
+  await env.send({ type: 'startAuctionSweep' });
+  await pageLoaded(env);
+  await stepDone(env);
+
+  assert.ok(env.state.local.auctions[key].searchedAt > 0);
+});

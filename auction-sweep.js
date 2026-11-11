@@ -26,6 +26,9 @@
   // Mở danh sách lại trong khoảng này thì dùng kết quả vừa quét, không quét lại.
   const FRESH_MS = 10 * 60 * 1000;
   const ENDED_GRACE_MS = 30 * 60 * 1000;
+  // Bài đã mở link mà vẫn không đọc được hạn, hoặc đã tìm link mà không ra: mở lại chẳng thêm được gì,
+  // chỉ thử lại sau chừng này (có thể Facebook đổi giao diện hoặc bài được sửa).
+  const INCOMPLETE_RETRY_MS = 6 * 60 * 60 * 1000;
   const SEND_RETRIES = 3;
   const SEND_RETRY_MS = 2000;
   const WINDOW_SIZE = { width: 520, height: 820 };
@@ -68,6 +71,7 @@
   function needsDeepScan(record, now) {
     const deep = record.deepScannedAt || 0;
     if (record.deadlineAt && record.deadlineAt < now - ENDED_GRACE_MS) return !deep;
+    if (!record.deadlineAt && deep) return deep < now - INCOMPLETE_RETRY_MS;
     return deep < now - FRESH_MS;
   }
 
@@ -134,6 +138,7 @@
       .filter(
         (record) =>
           !record.postId &&
+          (record.searchedAt || 0) < now - INCOMPLETE_RETRY_MS &&
           groups.includes(record.groupKey) &&
           !root.AuctionCore.isFinished(record, now) &&
           !root.AuctionCore.isExcluded(record, settings, now, records)
@@ -319,12 +324,22 @@
     await chrome.storage.local.set({ [AUCTIONS_KEY]: { ...stored, [key]: record } });
   }
 
+  // Đã mở trang tìm kiếm cho bài này: nếu vẫn chưa có link thì chưa tìm lại ngay.
+  // Bản tạm đã được thay bằng bản có link thật thì khoá cũ không còn, bỏ qua.
+  async function markSearched(key) {
+    const stored = (await chrome.storage.local.get(AUCTIONS_KEY))[AUCTIONS_KEY] || {};
+    if (!stored[key]) return;
+    const record = { ...stored[key], searchedAt: Date.now() };
+    await chrome.storage.local.set({ [AUCTIONS_KEY]: { ...stored, [key]: record } });
+  }
+
   // Chỉ tab quét do extension mở mới được báo xong bước.
   async function onStepDone(sender, message = {}) {
     const state = await readState();
     if (!state || !sender.tab || sender.tab.id !== state.tabId) return { ok: false };
     const step = state.steps[state.index];
     if (message.unavailable && step && step.mode === 'post') await markUnavailable(step.key);
+    if (step && step.mode === 'search') await markSearched(step.key);
     await advance();
     return { ok: true };
   }
