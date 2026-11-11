@@ -524,7 +524,44 @@ test('dedupeRecords prefers the full copy over the truncated one', () => {
   assert.equal(merged['g:123'].deadlineAt, 5);
 });
 
-const { conditionOf } = require('../auction-core.js');
+const { conditionOf, conditionsOf } = require('../auction-core.js');
+
+test('every condition in a post is listed, in order and without duplicates', () => {
+  const text = [
+    'Đấu giá cuối tuần',
+    'S1: Đèn bàn - tình trạng: mới 99%, đủ hộp',
+    'S2: Loa JBL tình trạng đã qua sử dụng, trầy nhẹ ở góc',
+    'Tình trạng: mới 99%, đủ hộp',
+    'End 21h',
+  ].join('\n');
+  assert.deepEqual(conditionsOf(text), ['Mới 99%, đủ hộp', 'Đã qua sử dụng, trầy nhẹ ở góc']);
+  assert.equal(conditionOf(text), 'Mới 99%, đủ hộp | Đã qua sử dụng, trầy nhẹ ở góc');
+});
+
+test('a long condition is kept whole and cut before session info', () => {
+  const long = 'mới 95%, ' + 'trầy xước nhẹ quanh viền máy, '.repeat(5) + 'còn bảo hành';
+  assert.equal(conditionsOf(`Tình trạng: ${long}`).length, 1);
+  assert.ok(conditionsOf(`Tình trạng: ${long}`)[0].length > 100);
+  assert.deepEqual(conditionsOf('Tình trạng: mới 99%, bước giá 10k, end 21h'), ['Mới 99%']);
+});
+
+test('the standard disclaimer after the condition is dropped and the preliminary condition list is read', () => {
+  const text = [
+    'Đấu giá máy hút bụi',
+    'Tình trạng: hàng nhật có bảo hành hư gãy do vận chuyển. Đồ đạc như hình nha. Tình trạng sơ bộ (có thể thiếu hoặc sai một số chi tiết, nếu thiếu hoặc sai bên tổ chức đấu giá phải có trách nhiệm bù đắp hợp lí hoặc thu hồi hàng hóa):',
+    '- Xác như Ảnh',
+    'Khởi điểm: 300K. Bước giá tối thiểu 50k',
+  ].join('\n');
+  assert.deepEqual(conditionsOf(text), ['Hàng nhật', 'Xác như Ảnh']);
+  const several = 'Tình trạng sơ bộ (có thể thiếu hoặc sai):\n- Móp nhẹ\n• Mất remote\nKhởi điểm 100k';
+  assert.deepEqual(conditionsOf(several), ['Móp nhẹ', 'Mất remote']);
+  assert.deepEqual(conditionsOf('Tình trạng sơ bộ: trầy nhẹ'), ['Trầy nhẹ']);
+});
+
+test('a wording that is already part of a labelled condition is not listed twice', () => {
+  assert.deepEqual(conditionsOf('Tình trạng: like new fullbox\nHàng like new nhé'), ['Like new fullbox']);
+  assert.deepEqual(conditionsOf('Máy mới 99%, tặng kèm sạc, hàng cũ trầy nhẹ'), ['Mới 99%', 'Hàng cũ']);
+});
 
 test('condition is read from the labelled line or from common wording', () => {
   const cases = {
@@ -546,4 +583,32 @@ test('parseAuctionPost and reparseFromSample carry the condition', () => {
 test('a truncated record still shows the condition found in the visible part', () => {
   const draft = reparseFromSample({ postId: '1', truncated: true, text: 'Đấu giá\nTình trạng: cũ, trầy nhẹ' });
   assert.equal(draft.condition, 'Cũ, trầy nhẹ');
+});
+
+const { scrapedFacts } = require('../auction-core.js');
+
+test('scrapedFacts lists what could be read from a post that is missing other info', () => {
+  const text = 'Đấu giá\nĐèn bàn Pixar\nTình trạng: mới 95%\nGiá khởi điểm 100k\nEnd 21h 2/11';
+  const facts = scrapedFacts({ postId: '1', authorName: 'An', groupName: 'Nhóm A', truncated: true }, text, REFERENCE);
+  assert.equal(facts.product, 'Đèn bàn Pixar');
+  assert.equal(facts.isProductProvisional, true);
+  assert.deepEqual(facts.conditions, ['Mới 95%']);
+  assert.equal(facts.startPrice, 100000);
+  assert.ok(facts.deadlineAt > 0);
+  assert.equal(facts.authorName, 'An');
+});
+
+test('scrapedFacts prefers the stored record over a fresh read and skips what is unknown', () => {
+  const facts = scrapedFacts(
+    { postId: '1', product: 'Gậy aba', highestBid: 50000, bidCount: 2, lots: { 1: { title: 'a' }, 2: { title: 'b' } }, boughtOut: true },
+    'Đấu giá\nBid khác\n',
+    REFERENCE
+  );
+  assert.equal(facts.product, 'Gậy aba');
+  assert.equal(facts.isProductProvisional, false);
+  assert.equal(facts.price, 50000);
+  assert.equal(facts.lotCount, 2);
+  assert.equal(facts.boughtOut, true);
+  assert.equal(facts.deadlineAt, null);
+  assert.deepEqual(facts.conditions, []);
 });

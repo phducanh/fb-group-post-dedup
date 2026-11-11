@@ -44,8 +44,13 @@
   const PRODUCT_META_PATTERN =
     /(?:^|[^a-z])(gia khoi diem|gia khoi dau|khoi diem|gkd|gia start|buoc gia|buoc nhay|buoc|nhay|ket thuc|het gio|end|deadline|start|gia mua ngay|mua ngay|mua dut|dau 0|dau gia tu)(?![a-z])/;
   // Tình trạng hàng: dòng có nhãn ("Tình trạng: mới 99%"), không có thì tìm cách ghi quen thuộc.
-  const CONDITION_MAX_LENGTH = 80;
-  const CONDITION_LABEL_PATTERN = /^[^a-z0-9]*(tinh trang|tt|do moi|condition)\s*[:\-=]\s*/;
+  const CONDITION_LABEL_PATTERN = /(?:^[^a-z0-9]*(?:tt|do moi|condition)\s*[:\-=]\s*|(?<![a-z0-9])tinh trang(?! so bo)\s*[:\-=]?\s*)/;
+  // "Tình trạng sơ bộ (...):" rồi các gạch đầu dòng bên dưới: mỗi gạch là một tình trạng.
+  const CONDITION_PRELIMINARY_PATTERN = /tinh trang so bo\s*(?:\([^)]*\))?\s*[:\-=]?\s*/;
+  const CONDITION_BULLET_PATTERN = /^[-–—•*+]\s*/;
+  // Câu miễn trách nhiệm ghi sau tình trạng ở mọi bài của nhóm: không phải tình trạng của món.
+  const CONDITION_BOILERPLATE_PATTERN =
+    /(?:co bao hanh hu|hu gay do van chuyen|do dac nhu hinh|tinh trang so bo|\(co the thieu)/;
   const CONDITION_WORDING_PATTERN =
     /(?:^|[^a-z0-9])((?:new|moi)\s*\d{2,3}\s*%|like\s*new|likenew|new\s*seal|nguyen\s*seal|sealed|da qua su dung|hang cu|second\s*hand)(?![a-z])/;
   // Đoạn đầu bài đủ ổn định giữa bản bị cắt "Xem thêm" và bản đầy đủ.
@@ -439,33 +444,84 @@
     return lotTitles.length ? cleanProduct(lotTitles.join(', ')) : '';
   }
 
+  const CONDITION_SEPARATOR = ' | ';
+
   function cleanCondition(value) {
-    const trimmed = value.replace(/^[\s\-–—:=,.|/*•>]+|[\s\-–—:=,.|/*•(]+$/g, '').slice(0, CONDITION_MAX_LENGTH);
+    const trimmed = value.replace(/^[\s\-–—:=,.|/*•>]+|[\s\-–—:=,.|/*•(]+$/g, '');
     return trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : '';
   }
 
-  /** Tình trạng hàng (mới/cũ, % mới, ...) ghi trong bài; '' nếu bài không nói. */
-  function conditionOf(text) {
+  // Giá trị sau nhãn "Tình trạng" dừng trước phần thông tin phiên viết liền sau ("bước giá", "end 21h").
+  function labelledConditions(line) {
+    const folded = foldSameLength(line);
+    const found = [];
+    const pattern = new RegExp(CONDITION_LABEL_PATTERN.source, 'g');
+    let match = pattern.exec(folded);
+    while (match) {
+      const start = match.index + match[0].length;
+      const rest = folded.slice(start);
+      const cuts = [rest.search(PRODUCT_META_PATTERN), rest.search(CONDITION_BOILERPLATE_PATTERN)].filter((at) => at >= 0);
+      const value = cleanCondition(line.slice(start, cuts.length ? start + Math.min(...cuts) : undefined));
+      if (value) found.push({ value, folded: foldSameLength(value) });
+      match = pattern.exec(folded);
+    }
+    return found;
+  }
+
+  // Phần sau "Tình trạng sơ bộ (...):" trên cùng dòng, hoặc các gạch đầu dòng liền sau đó.
+  function preliminaryConditions(lines, index) {
+    const folded = foldSameLength(lines[index]);
+    const match = CONDITION_PRELIMINARY_PATTERN.exec(folded);
+    if (!match) return [];
+    const toEntry = (value) => ({ value, folded: foldSameLength(value) });
+    const sameLine = cleanCondition(lines[index].slice(match.index + match[0].length));
+    if (sameLine) return [toEntry(sameLine)];
+    const bullets = [];
+    for (let next = index + 1; next < lines.length && CONDITION_BULLET_PATTERN.test(lines[next]); next += 1) {
+      const value = cleanCondition(lines[next].replace(CONDITION_BULLET_PATTERN, ''));
+      if (value) bullets.push(toEntry(value));
+    }
+    return bullets;
+  }
+
+  /**
+   * Mọi tình trạng hàng ghi trong bài (mới/cũ, % mới, ...), theo thứ tự xuất hiện, không lặp.
+   * Dòng có nhãn ("Tình trạng: ...", cả khi nhãn nằm giữa dòng của một suất) lấy nguyên giá trị;
+   * ngoài ra tìm các cách ghi quen thuộc ("mới 99%", "like new", ...) chưa nằm trong giá trị có nhãn.
+   */
+  function conditionsOf(text) {
     const lines = String(text || '')
       .normalize('NFC')
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean);
-    for (const line of lines) {
-      const match = foldSameLength(line).match(CONDITION_LABEL_PATTERN);
-      if (match) {
-        const value = cleanCondition(line.slice(match[0].length));
-        if (value) return value;
-      }
-    }
-    for (const line of lines) {
-      const match = foldSameLength(line).match(CONDITION_WORDING_PATTERN);
-      if (match) {
+    const labelled = lines.flatMap((line, index) => [
+      ...labelledConditions(line),
+      ...preliminaryConditions(lines, index),
+    ]);
+    const found = [];
+    const add = (entry) => {
+      if (!found.some((other) => other.folded === entry.folded)) found.push(entry);
+    };
+    labelled.forEach(add);
+    lines.forEach((line) => {
+      const folded = foldSameLength(line);
+      const pattern = new RegExp(CONDITION_WORDING_PATTERN.source, 'g');
+      let match = pattern.exec(folded);
+      while (match) {
         const start = match.index + match[0].length - match[1].length;
-        return cleanCondition(line.slice(start, start + match[1].length));
+        const value = cleanCondition(line.slice(start, start + match[1].length));
+        const foldedValue = foldSameLength(value);
+        if (value && !labelled.some((entry) => entry.folded.includes(foldedValue))) add({ value, folded: foldedValue });
+        match = pattern.exec(folded);
       }
-    }
-    return '';
+    });
+    return found.map((entry) => entry.value);
+  }
+
+  /** Các tình trạng nối bằng " | " (chuỗi rỗng nếu bài không nói). */
+  function conditionOf(text) {
+    return conditionsOf(text).join(CONDITION_SEPARATOR);
   }
 
   function cleanProduct(value) {
@@ -786,6 +842,35 @@
     return missing;
   }
 
+  /**
+   * Những gì đọc được từ một bài dù còn thiếu thông tin khác: ưu tiên bản ghi đã lưu, chỗ nào
+   * chưa có thì đọc lại từ nội dung. Bài mới đọc được phần đầu thì tên món chỉ là đoán tạm.
+   */
+  function scrapedFacts(record, text, reference) {
+    const source = String(text || record.text || '');
+    const parsed = parseAuctionPost(source, record.firstSeenAt || reference);
+    const stored = String(record.product || '').trim();
+    const product = stored || parsed.product || '';
+    const conditions = record.condition ? record.condition.split(CONDITION_SEPARATOR).filter(Boolean) : conditionsOf(source);
+    const deadline = record.deadlineAt ? record.deadlineAt : parsed.deadline ? parsed.deadline.at : null;
+    const approximate = record.deadlineAt ? Boolean(record.deadlineApproximate) : Boolean(parsed.deadline && parsed.deadline.approximate);
+    return {
+      product,
+      isProductProvisional: Boolean(product && !stored && record.truncated),
+      conditions,
+      deadlineAt: deadline,
+      deadlineApproximate: approximate,
+      startPrice: record.startPrice ?? parsed.startPrice,
+      price: highestPrice(record) || parsed.currentPrice || null,
+      buyNowPrice: record.buyNowPrice || parsed.buyNowPrice || null,
+      bidCount: record.bidCount || 0,
+      lotCount: Object.keys(record.lots || parsed.lots || {}).length,
+      boughtOut: Boolean(record.boughtOut || parsed.soldOut),
+      authorName: record.authorName || '',
+      groupName: record.groupName || '',
+    };
+  }
+
   function unreadComments(comments) {
     return comments
       .map((comment) => String(comment || '').trim())
@@ -802,7 +887,8 @@
     // Bài mới đọc được phần đầu thì phần đó thường là nội quy, không đoán tên món từ đó.
     const source = record.text || (sample && sample.text) || '';
     const product = record.truncated ? record.product : productName(source) || record.product || productName(record.title);
-    const condition = record.condition || conditionOf(source);
+    // Tình trạng cũng tính lại từ nội dung đang có, để bài lưu từ bản đọc cũ được bổ sung đủ.
+    const condition = conditionOf(source) || record.condition;
     const base = { ...record, product, ...(condition ? { condition } : {}) };
     if (!sample || !sample.text) {
       return product === record.product && condition === record.condition ? record : base;
@@ -844,6 +930,8 @@
     parseAuctionPost,
     productName,
     conditionOf,
+    conditionsOf,
+    scrapedFacts,
     highestPrice,
     textKey,
     compareNewest,

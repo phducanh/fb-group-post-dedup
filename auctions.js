@@ -9,6 +9,7 @@
     readSettings,
     dedupeRecords,
     missingInfo,
+    scrapedFacts,
     productName,
     reparseFromSample,
     applyManual,
@@ -253,7 +254,11 @@
 
   function productCell(record) {
     const td = productNameCell(record);
-    if (record.condition) td.append(sub(`Tình trạng: ${record.condition}`));
+    // Mỗi tình trạng một dòng, hiện đủ không cắt.
+    String(record.condition || '')
+      .split(' | ')
+      .filter(Boolean)
+      .forEach((condition) => td.append(sub(`Tình trạng: ${condition}`)));
     return td;
   }
 
@@ -398,6 +403,23 @@
     return missing.join(', ');
   }
 
+  // Các thông tin đã đọc được của bài (một dòng mỗi mục) để thấy ngay mà không phải bung bài ra.
+  function sampleFacts(record, sample) {
+    const facts = scrapedFacts(record, sample.text, sample.capturedAt);
+    const lines = [];
+    if (facts.product) lines.push(`Sản phẩm: ${facts.product}${facts.isProductProvisional ? ' (tạm đoán từ phần đầu bài)' : ''}`);
+    facts.conditions.forEach((condition) => lines.push(`Tình trạng: ${condition}`));
+    if (facts.lotCount > 0) lines.push(`Bài nhiều món: ${facts.lotCount} suất`);
+    if (facts.deadlineAt) lines.push(`Hạn: ${facts.deadlineApproximate ? '≈ ' : ''}${dateFormat.format(facts.deadlineAt)}`);
+    if (facts.startPrice != null) lines.push(`Giá khởi điểm: ${formatMoney(facts.startPrice)}`);
+    if (facts.price) lines.push(`Giá hiện tại: ${formatMoney(facts.price)}${facts.bidCount ? ` (${facts.bidCount} lượt trả giá)` : ''}`);
+    if (facts.buyNowPrice) lines.push(`Mua ngay: ${formatMoney(facts.buyNowPrice)}`);
+    if (facts.boughtOut) lines.push('Đã có người mua đứt');
+    const byline = [facts.authorName, facts.groupName].filter(Boolean).join(' · ');
+    if (byline) lines.push(`Đăng bởi: ${byline}`);
+    return lines;
+  }
+
   function renderSamples(byKey) {
     nodes.samplesSection.hidden = samples.length === 0;
     nodes.samplesCount.textContent = String(samples.length);
@@ -429,6 +451,13 @@
         summary.append(missing, link);
         if (record.key) summary.append(editButton(record, 'sample-edit'));
         summary.append(remove);
+        const facts = sampleFacts(record, sample);
+        if (facts.length) {
+          const list = document.createElement('div');
+          list.className = 'sample-facts';
+          facts.forEach((line) => list.append(sub(line)));
+          summary.append(list);
+        }
 
         const content = document.createElement('pre');
         content.textContent = sample.text.slice(0, SAMPLE_PREVIEW_LIMIT) || '(không đọc được nội dung bài)';
@@ -457,6 +486,7 @@
           `=== ${sample.title || '(không có tiêu đề)'}`,
           sample.url,
           `Thiếu: ${missingText(byKey[sample.key] || { postId: '' }, sample) || 'không'}`,
+          ...sampleFacts(byKey[sample.key] || { postId: '' }, sample).map((line) => `Đọc được — ${line}`),
           `Số comment đã đọc: ${sample.commentCount}`,
           ...(sample.picked ? [`Bài chính: ${sample.picked} (${sample.postRoots} khối)`] : []),
           '--- Nội dung bài:',

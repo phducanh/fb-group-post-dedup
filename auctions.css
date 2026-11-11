@@ -175,6 +175,15 @@ input[type='number'] {
   font-weight: 600;
 }
 
+.sample-facts {
+  margin-top: 4px;
+}
+
+.sample-facts .sub {
+  overflow: visible;
+  font-weight: 400;
+}
+
 .sample-link {
   margin-left: 8px;
   font-weight: 400;
