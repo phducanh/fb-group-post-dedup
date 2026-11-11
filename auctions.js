@@ -5,6 +5,8 @@
     highestPrice,
     compareNewest,
     isEnded,
+    isInGracePeriod,
+    compareByDeadline,
     isExcluded,
     readSettings,
     dedupeRecords,
@@ -112,18 +114,6 @@
     return `Còn ${Math.floor(ms / DAY_MS)} ngày ${Math.floor((ms % DAY_MS) / HOUR_MS)} giờ`;
   }
 
-  // Đang diễn ra (hạn gần nhất trước) -> không đọc được hạn -> đã kết thúc (mới kết thúc trước).
-  function compareByDeadline(now) {
-    const rank = (record) => (isEnded(record, now) ? 2 : record.deadlineAt ? 0 : 1);
-    return (a, b) => {
-      const byRank = rank(a) - rank(b);
-      if (byRank !== 0) return byRank;
-      if (rank(a) === 0) return a.deadlineAt - b.deadlineAt;
-      if (rank(a) === 2) return (b.deadlineAt || 0) - (a.deadlineAt || 0);
-      return b.updatedAt - a.updatedAt;
-    };
-  }
-
   function compareRecords(now) {
     return nodes.sort.value === 'deadline' ? compareByDeadline(now) : compareNewest;
   }
@@ -185,7 +175,11 @@
       return td;
     }
     td.textContent = `${record.deadlineApproximate ? '≈ ' : ''}${dateFormat.format(record.deadlineAt)}`;
-    const countdown = sub(formatCountdown(record.deadlineAt - now));
+    const countdown = sub(
+      isInGracePeriod(record, now)
+        ? `Vừa hết hạn ${Math.max(1, Math.floor((now - record.deadlineAt) / MINUTE_MS))} phút trước, có thể còn tỉa`
+        : formatCountdown(record.deadlineAt - now)
+    );
     countdown.classList.add('countdown');
     td.append(countdown);
     if (record.deadlineRaw) td.title = record.deadlineRaw;
@@ -295,7 +289,8 @@
 
   function renderRow(record, now) {
     const tr = document.createElement('tr');
-    if (isEnded(record, now)) tr.className = 'ended';
+    if (isInGracePeriod(record, now)) tr.className = 'soon';
+    else if (isEnded(record, now)) tr.className = 'ended';
     else if (record.deadlineAt && record.deadlineAt - now < SOON_MS) tr.className = 'soon';
     tr.append(...infoCells(record, now), editCell(record));
     return tr;
@@ -328,12 +323,14 @@
     // Bài bị bỏ qua theo cài đặt vẫn được giữ trong máy: đổi cài đặt là hiện lại.
     const included = records.filter((record) => !isExcluded(record, settings, now, records));
     const visible = included
-      .filter((record) => !(hideEnded && isEnded(record, now)))
+      .filter((record) => !(hideEnded && isEnded(record, now) && !isInGracePeriod(record, now)))
       .sort(compareRecords(now));
     nodes.rows.replaceChildren(...visible.map((record) => renderRow(record, now)));
     nodes.empty.hidden = visible.length > 0;
 
-    const running = included.filter((record) => record.deadlineAt && !isEnded(record, now)).length;
+    const running = included.filter(
+      (record) => record.deadlineAt && (!isEnded(record, now) || isInGracePeriod(record, now))
+    ).length;
     const skipped = records.length - included.length;
     const skippedText = skipped ? ` · ẩn ${skipped} bài (khoá bình luận / quá ${settings.maxAgeDays} ngày)` : '';
     nodes.summary.textContent = `${included.length} bài · ${running} bài đang diễn ra${skippedText}`;

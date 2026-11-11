@@ -706,6 +706,28 @@
   // Sau hạn chừng này mới coi là xong hẳn (hạn đọc được có thể lệch vài phút).
   const FINISHED_GRACE_MS = 30 * MINUTE_MS;
 
+  // Vừa quá hạn chưa tới 30 phút (còn giờ tỉa, hạn đọc được có thể lệch): vẫn coi là đang diễn ra.
+  function isInGracePeriod(record, now) {
+    if (record.boughtOut || record.unavailable || record.done || !record.deadlineAt) return false;
+    return record.deadlineAt <= now && record.deadlineAt > now - FINISHED_GRACE_MS;
+  }
+
+  // Đang diễn ra hoặc vừa quá hạn <30 phút (hạn cũ nhất trước) -> không đọc được hạn
+  // -> đã kết thúc hẳn (mới kết thúc trước).
+  function compareByDeadline(now) {
+    const rank = (record) => {
+      if (isInGracePeriod(record, now)) return 0;
+      return isEnded(record, now) ? 2 : record.deadlineAt ? 0 : 1;
+    };
+    return (a, b) => {
+      const byRank = rank(a) - rank(b);
+      if (byRank !== 0) return byRank;
+      if (rank(a) === 0) return a.deadlineAt - b.deadlineAt;
+      if (rank(a) === 2) return (b.deadlineAt || 0) - (a.deadlineAt || 0);
+      return b.updatedAt - a.updatedAt;
+    };
+  }
+
   /**
    * Bài đã xong, không cần mở lại ở các lượt quét sau: có người mua đứt, bị xoá/ẩn, được
    * đánh dấu xong bằng tay, hoặc đã qua hạn và đã từng được mở qua link để đọc.
@@ -948,6 +970,8 @@
     isOlderThan,
     isExcluded,
     isEnded,
+    isInGracePeriod,
+    compareByDeadline,
     isFinished,
     applyManual,
     postIdFromLink,

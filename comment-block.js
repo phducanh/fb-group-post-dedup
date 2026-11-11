@@ -39,8 +39,8 @@
   // đó. Ưu tiên mục khớp tên (không phân biệt dấu/dạng Unicode); nếu tên lệch (huy hiệu,
   // biệt danh...) mà chỉ có đúng một mục Chặn thì dùng mục đó.
   function findBlockItem(name) {
+    BLOCK_ITEM_PATTERN.test(item.innerText.trim())
     const items = [...document.querySelectorAll('[role="menuitem"]')].filter((item) =>
-      BLOCK_ITEM_PATTERN.test(item.innerText.trim())
     );
     return items.find((item) => matchesName(item.innerText, name)) || (items.length === 1 ? items[0] : null);
   }

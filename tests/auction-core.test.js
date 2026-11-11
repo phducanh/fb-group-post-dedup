@@ -641,3 +641,21 @@ test('a post that opens with rules and greetings does not take them as the produ
   assert.equal(productName(full), 'Gao Shark');
   assert.equal(productName('Đấu giá nè\nBàn phím cơ Keychron K2\nEnd 22h'), 'Bàn phím cơ Keychron K2');
 });
+
+const { compareByDeadline, isInGracePeriod } = require('../auction-core.js');
+
+test('a post that ended less than 30 minutes ago stays among the running ones, oldest deadline first', () => {
+  const now = 1_000_000_000;
+  const MIN = 60 * 1000;
+  const justEnded = { key: 'a', deadlineAt: now - 10 * MIN, updatedAt: 1 };
+  const running = { key: 'b', deadlineAt: now + 60 * MIN, updatedAt: 1 };
+  const noDeadline = { key: 'c', updatedAt: 1 };
+  const longEnded = { key: 'd', deadlineAt: now - 31 * MIN, updatedAt: 1 };
+  const soldJustNow = { key: 'e', deadlineAt: now - 5 * MIN, boughtOut: true, updatedAt: 1 };
+  const order = [longEnded, soldJustNow, running, noDeadline, justEnded].sort(compareByDeadline(now)).map((r) => r.key);
+  assert.deepEqual(order, ['a', 'b', 'c', 'e', 'd']);
+  assert.equal(isInGracePeriod(justEnded, now), true);
+  assert.equal(isInGracePeriod(longEnded, now), false);
+  assert.equal(isInGracePeriod(soldJustNow, now), false);
+  assert.equal(isInGracePeriod(running, now), false);
+});
