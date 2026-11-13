@@ -191,7 +191,7 @@
 
   function diagnoseComments() {
     const articles = [...document.querySelectorAll(ARTICLE_SELECTOR)];
-    const comments = articles.filter((a) => isCommentLabel(a.getAttribute('aria-label')));
+    const comments = articles.filter((`a`) => isCommentLabel(a.getAttribute('aria-label')));
     const buttonLabels = [...document.querySelectorAll('[role="button"][aria-label]')]
       .map((node) => node.getAttribute('aria-label'))
       .filter((label) => /bình luận|comment/i.test(label));

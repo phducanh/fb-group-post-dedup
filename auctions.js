@@ -73,6 +73,8 @@
   // Khoá bài đang mở trong hộp nhập tay.
   let editingKey = null;
   let samples = [];
+  let recordsByKey = {};
+  let renderedSamplesSignature = null;
   let records = [];
   let settings = readSettings({});
 
@@ -327,6 +329,7 @@
       .sort(compareRecords(now));
     nodes.rows.replaceChildren(...visible.map((record) => renderRow(record, now)));
     nodes.empty.hidden = visible.length > 0;
+    renderSamples();
 
     const running = included.filter(
       (record) => record.deadlineAt && (!isEnded(record, now) || isInGracePeriod(record, now))
@@ -461,13 +464,25 @@
     return td;
   }
 
-  function renderSamples(byKey) {
+  // Ẩn bài đã kết thúc (trừ bài còn trong giờ tỉa), giống bảng chính.
+  function isHiddenEnded(record, now) {
+    return nodes.hideEnded.checked && isEnded(record, now) && !isInGracePeriod(record, now);
+  }
+
+  function renderSamples() {
     const now = Date.now();
+    const shown = samples
+      .map((sample) => ({ sample, record: sampleRecord(sample, recordsByKey) }))
+      .filter(({ record }) => !isHiddenEnded(record, now));
     nodes.samplesSection.hidden = samples.length === 0;
-    nodes.samplesCount.textContent = String(samples.length);
+    const hiddenCount = samples.length - shown.length;
+    nodes.samplesCount.textContent = hiddenCount ? `${shown.length}/${samples.length}` : String(samples.length);
+    // Giữ nguyên DOM (và các mục đang bung) khi danh sách hiển thị không đổi.
+    const signature = shown.map(({ sample }) => sample.key).join('|');
+    if (signature === renderedSamplesSignature) return;
+    renderedSamplesSignature = signature;
     nodes.samples.replaceChildren(
-      ...samples.map((sample) => {
-        const record = sampleRecord(sample, byKey);
+      ...shown.map(({ sample, record }) => {
         const tr = document.createElement('tr');
         tr.append(...infoCells(record, now), unreadCell(record, sample), sampleActionsCell(record, sample));
         return tr;
@@ -508,7 +523,8 @@
       });
       records = Object.values(byKey);
       samples = Object.values(saved).sort((a, b) => b.capturedAt - a.capturedAt);
-      renderSamples(byKey);
+      recordsByKey = byKey;
+      renderedSamplesSignature = null;
       render();
     });
   }
