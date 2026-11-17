@@ -230,6 +230,7 @@
     if (typeof stored.blockWithoutConfirm === 'boolean') {
       settings.blockWithoutConfirm = stored.blockWithoutConfirm;
     }
+    
     if (settings.showBlockButton) scheduleScan();
     else removeAllButtons();
   }
