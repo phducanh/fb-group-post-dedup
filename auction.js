@@ -21,7 +21,13 @@
     unreadComments,
   } = globalThis.AuctionCore;
 
-  const DEFAULT_GROUPS = ['316605308060947', '426208205081'];
+  const DEFAULT_GROUPS = [
+    '316605308060947',
+    '426208205081',
+    '345439196133641',
+    '1707439593022578',
+    '640737300538643',
+  ];
   const GROUPS_KEY = 'auctionGroups';
   const STORAGE_KEY = 'auctions';
   const ARTICLE_SELECTOR = '[role="article"]';

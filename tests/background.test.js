@@ -26,7 +26,7 @@ function loadBackground() {
     onWindowRemoved: null,
     onAlarm: null,
     local: {},
-    sync: {},
+    sync: { auctionGroups: ['316605308060947', '426208205081'] },
     windows: [],
     removedWindows: [],
     alarms: [],
@@ -206,6 +206,28 @@ test('a recent finished sweep is reused unless forced', async () => {
   assert.equal(env.state.windows.length, 0);
   await env.send({ type: 'startAuctionSweep', force: true });
   assert.equal(env.state.windows.length, 1);
+});
+
+test('without a saved list, the sweep visits all five default groups', async () => {
+  const env = loadBackground();
+  delete env.state.sync.auctionGroups;
+  await env.send({ type: 'startAuctionSweep' });
+
+  const visited = [];
+  for (let step = 0; step < 5; step += 1) {
+    const url = step === 0 ? env.state.windows[0].url : env.state.updated.at(-1)[1].url;
+    visited.push(url.match(/\/groups\/(\d+)\//)[1]);
+    await pageLoaded(env);
+    await stepDone(env);
+  }
+
+  assert.deepEqual(visited, [
+    '316605308060947',
+    '426208205081',
+    '345439196133641',
+    '1707439593022578',
+    '640737300538643',
+  ]);
 });
 
 function byKey(...records) {

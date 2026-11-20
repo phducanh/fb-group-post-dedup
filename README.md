@@ -39,7 +39,7 @@ Mỗi comment của người khác có thêm nút **Chặn** cạnh "Trả lời
 
 ## Theo dõi bài đấu giá
 
-Quét bài đấu giá trong các nhóm theo dõi (mặc định `316605308060947` và `426208205081`) và liệt kê: hạn kết thúc (ngày, giờ), giá cao nhất hiện tại, link bài.
+Quét bài đấu giá trong các nhóm theo dõi (mặc định `316605308060947`, `426208205081`, `345439196133641`, `1707439593022578`, `640737300538643`) và liệt kê: hạn kết thúc (ngày, giờ), giá cao nhất hiện tại, link bài.
 
 - Bấm **Xem bài đấu giá** trong popup để mở `auctions.html`. Danh sách hiện ngay dữ liệu đã có và tự quét lại (`auction-sweep.js`) trong một cửa sổ nhỏ, xong tự đóng; danh sách cập nhật trực tiếp trong lúc quét. Thứ tự một lượt quét:
   1. **Cập nhật bài đã có qua link**: mở thẳng link từng bài trong danh sách còn hạn (tối đa 40, hạn gần nhất trước), chuyển sang "Tất cả bình luận", bấm "Xem thêm bình luận" cho tới hết để lấy giá, mua đứt, khoá bình luận, hạn mới nhất. Link báo "nội dung không hiển thị" thì bài được đánh dấu **đã bị xoá hoặc ẩn**.

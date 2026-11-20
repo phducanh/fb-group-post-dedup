@@ -659,3 +659,42 @@ test('a post that ended less than 30 minutes ago stays among the running ones, o
   assert.equal(isInGracePeriod(soldJustNow, now), false);
   assert.equal(isInGracePeriod(running, now), false);
 });
+
+test('reads a post whose labels and values sit on separate lines (label, then ": value")', () => {
+  const text = [
+    'ĐẤU GIÁ ',
+    ' : DX land Mage Red verison -Kiramager',
+    'Tình trạng no box là sản phẩm lẻ không có box',
+    'Bước Giá ',
+    ': 50k',
+    'MUA ĐỨT : ib',
+    'Thời Gian Kết Thúc ',
+    ': 22h ngày 18/11/2026 bid tỉa 5p',
+    'Phí Ship người Win Bid chịu',
+  ].join('\n');
+  const reference = new Date('2026-11-16T10:00:00+07:00').getTime();
+  const post = parseAuctionPost(text, reference);
+
+  assert.equal(isAuctionPost(text), true);
+  assert.equal(post.product, 'DX land Mage Red verison -Kiramager');
+  assert.equal(post.deadline.at, new Date('2026-11-18T22:00:00+07:00').getTime());
+  assert.equal(post.deadline.approximate, false);
+  assert.equal(post.buyNowPrice, null);
+});
+
+test('reads a dash-bulleted bid post that writes the deadline without a year', () => {
+  const text = [
+    'ĐẤU GIÁ #BID',
+    '-Sản phẩm: khải hồn đế hoàng kèm 2 rồng vàng',
+    '-Khởi điểm: 100k',
+    '-Bước Giá: 30,40,50k trở lên',
+    '-Mua đứt: thương lượng thêm',
+    '-Thời Gian Kết Thúc: 22h ngày 21/11',
+  ].join('\n');
+  const post = parseAuctionPost(text, new Date('2026-11-20T10:00:00+07:00').getTime());
+
+  assert.equal(post.product, 'Khải hồn đế hoàng kèm 2 rồng vàng');
+  assert.equal(post.startPrice, 100000);
+  assert.equal(post.deadline.at, new Date('2026-11-21T22:00:00+07:00').getTime());
+  assert.equal(post.buyNowPrice, null);
+});

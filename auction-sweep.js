@@ -11,7 +11,13 @@
   const AUCTIONS_KEY = 'auctions';
   const GROUPS_KEY = 'auctionGroups';
   const SETTINGS_KEYS = ['auctionMaxAgeDays', 'auctionSkipLocked'];
-  const DEFAULT_GROUPS = ['316605308060947', '426208205081'];
+  const DEFAULT_GROUPS = [
+    '316605308060947',
+    '426208205081',
+    '345439196133641',
+    '1707439593022578',
+    '640737300538643',
+  ];
   const WATCHDOG_ALARM = 'auctionSweepWatchdog';
   const STEP_TIMEOUT_MIN = { group: 6, post: 2, search: 2 };
   const SAMPLES_KEY = 'auctionSamples';
